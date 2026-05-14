@@ -156,7 +156,7 @@ def download_esol(timeout: int = 10) -> list[tuple[str, float]]:
 # ---------------------------------------------------------------------------
 
 class MolGCN(torch.nn.Module):
-    def __init__(self, in_features: int = 4, hidden: int = 64, dropout: float = 0.1):
+    def __init__(self, in_features: int = 9, hidden: int = 64, dropout: float = 0.1):
         super().__init__()
         self.conv1   = GCNConv(in_features, hidden)
         self.conv2   = GCNConv(hidden, hidden)
@@ -268,7 +268,7 @@ def main():
     val_loader   = DataLoader(val_ds,   batch_size=args.batch)
     test_loader  = DataLoader(test_ds,  batch_size=args.batch)
 
-    model     = MolGCN(in_features=4, hidden=args.hidden, dropout=args.dropout)
+    model     = MolGCN(in_features=9, hidden=args.hidden, dropout=args.dropout)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, factor=0.5, patience=15, min_lr=1e-5

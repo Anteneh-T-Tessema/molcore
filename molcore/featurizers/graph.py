@@ -6,9 +6,11 @@ from molcore._molcore import PyMolGraph, mol_to_graph_arrays
 def to_pyg_data(graph: PyMolGraph) -> Data:
     """
     Rust graph arrays → PyG Data. Zero-copy at every stage.
-    node_feats: (N, 4) float32  — [atomic_num, is_aromatic, formal_charge, num_hs]
+    node_feats: (N, 9) float32
+        [atomic_num, is_aromatic, formal_charge, num_hs,
+         degree, in_ring, hybridization, chirality, mass_norm]
     edge_index: (2, E) int64    — COO, bidirectional
-    edge_attr:  (E, 4) float32  — bond type one-hot
+    edge_attr:  (E, 4) float32  — bond type one-hot [single, double, triple, aromatic]
     """
     node_feats_np, edge_index_np, edge_feats_np = mol_to_graph_arrays(graph)
     return Data(

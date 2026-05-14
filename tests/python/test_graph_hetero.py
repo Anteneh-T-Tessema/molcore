@@ -9,7 +9,7 @@ def test_hetero_benzene_only_C_nodes():
     mol  = Mol.from_smiles("c1ccccc1")
     data = to_pyg_hetero(mol._graph)
     assert "C" in data.node_types, "benzene should have C node type"
-    assert data["C"].x.shape == (6, 4), "6 carbons, 4 features each"
+    assert data["C"].x.shape == (6, 9), "6 carbons, 9 features each"
 
 
 def test_hetero_pyridine_has_C_and_N():

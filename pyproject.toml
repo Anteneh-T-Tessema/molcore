@@ -18,6 +18,9 @@ dependencies = [
 pretrained = ["molfeat>=0.9", "datamol>=0.12"]
 dev        = ["maturin", "pytest", "pytest-benchmark"]
 
+[project.scripts]
+molcore = "molcore.cli:main"
+
 [tool.maturin]
 features         = ["extension-module"]
 python-source    = "."

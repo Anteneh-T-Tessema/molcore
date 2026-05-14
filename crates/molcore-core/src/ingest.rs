@@ -1,5 +1,7 @@
+use petgraph::graph::EdgeIndex;
 use petgraph::stable_graph::NodeIndex;
-use std::collections::HashMap;
+use petgraph::visit::EdgeRef;
+use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 use crate::molecule::{Atom, Bond, BondType, MolGraph, PyMolGraph};
 
@@ -34,8 +36,12 @@ fn push_atom(
     next_bond: &mut Option<BondType>,
     atomic_num: u8,
     is_aromatic: bool,
+    chirality: u8,
 ) {
-    let idx = graph.add_node(Atom { atomic_num, is_aromatic, formal_charge: 0, num_hs: 0 });
+    let idx = graph.add_node(Atom {
+        atomic_num, is_aromatic, formal_charge: 0, num_hs: 0,
+        degree: 0, in_ring: false, hybridization: 0, chirality,
+    });
     if let Some(prev) = *last {
         let default = if is_aromatic { BondType::Aromatic } else { BondType::Single };
         let bt = next_bond.take().unwrap_or(default);
@@ -62,8 +68,13 @@ fn close_ring(
     }
 }
 
-fn bracket_atomic_num(inner: &str) -> (u8, bool) {
+/// Parse a bracket-atom inner string such as "C@H", "NH2", "2H", "Cu+2".
+/// Returns (atomic_num, is_aromatic, chirality).
+/// chirality: 0=none, 1=@ (anticlockwise/S), 2=@@ (clockwise/R).
+fn parse_bracket_atom(inner: &str) -> (u8, bool, u8) {
+    // Strip leading isotope digits
     let s = inner.trim_start_matches(|c: char| c.is_ascii_digit());
+    // Extract element symbol
     let sym: String = s.chars().take_while(|c| c.is_alphabetic()).collect();
     let is_ar = sym.chars().next().map(|c| c.is_lowercase()).unwrap_or(false);
     let n = match sym.to_lowercase().as_str() {
@@ -74,7 +85,12 @@ fn bracket_atomic_num(inner: &str) -> (u8, bool) {
         "zn" => 30, "br" => 35, "kr" => 36, "ag" => 47, "i"  => 53, "xe" => 54,
         _ => 0,
     };
-    (n, is_ar)
+    // Parse chirality from the remainder after the symbol
+    let rest = &s[sym.len()..];
+    let chirality = if rest.starts_with("@@") { 2 }
+                    else if rest.starts_with('@') { 1 }
+                    else { 0 };
+    (n, is_ar, chirality)
 }
 
 fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
@@ -91,33 +107,33 @@ fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
         let c = chars[i];
         match c {
             // Aromatic atoms
-            'b' => { push_atom(&mut graph, &mut last, &mut next_bond, 5,  true);  i += 1; }
-            'c' => { push_atom(&mut graph, &mut last, &mut next_bond, 6,  true);  i += 1; }
-            'n' => { push_atom(&mut graph, &mut last, &mut next_bond, 7,  true);  i += 1; }
-            'o' => { push_atom(&mut graph, &mut last, &mut next_bond, 8,  true);  i += 1; }
-            'p' => { push_atom(&mut graph, &mut last, &mut next_bond, 15, true);  i += 1; }
-            's' => { push_atom(&mut graph, &mut last, &mut next_bond, 16, true);  i += 1; }
+            'b' => { push_atom(&mut graph, &mut last, &mut next_bond, 5,  true,  0); i += 1; }
+            'c' => { push_atom(&mut graph, &mut last, &mut next_bond, 6,  true,  0); i += 1; }
+            'n' => { push_atom(&mut graph, &mut last, &mut next_bond, 7,  true,  0); i += 1; }
+            'o' => { push_atom(&mut graph, &mut last, &mut next_bond, 8,  true,  0); i += 1; }
+            'p' => { push_atom(&mut graph, &mut last, &mut next_bond, 15, true,  0); i += 1; }
+            's' => { push_atom(&mut graph, &mut last, &mut next_bond, 16, true,  0); i += 1; }
             // Aliphatic atoms (multi-char: Cl, Br)
             'B' => {
                 if i + 1 < len && chars[i+1] == 'r' {
-                    push_atom(&mut graph, &mut last, &mut next_bond, 35, false); i += 2;
+                    push_atom(&mut graph, &mut last, &mut next_bond, 35, false, 0); i += 2;
                 } else {
-                    push_atom(&mut graph, &mut last, &mut next_bond, 5,  false); i += 1;
+                    push_atom(&mut graph, &mut last, &mut next_bond, 5,  false, 0); i += 1;
                 }
             }
             'C' => {
                 if i + 1 < len && chars[i+1] == 'l' {
-                    push_atom(&mut graph, &mut last, &mut next_bond, 17, false); i += 2;
+                    push_atom(&mut graph, &mut last, &mut next_bond, 17, false, 0); i += 2;
                 } else {
-                    push_atom(&mut graph, &mut last, &mut next_bond, 6,  false); i += 1;
+                    push_atom(&mut graph, &mut last, &mut next_bond, 6,  false, 0); i += 1;
                 }
             }
-            'N' => { push_atom(&mut graph, &mut last, &mut next_bond, 7,  false); i += 1; }
-            'O' => { push_atom(&mut graph, &mut last, &mut next_bond, 8,  false); i += 1; }
-            'F' => { push_atom(&mut graph, &mut last, &mut next_bond, 9,  false); i += 1; }
-            'P' => { push_atom(&mut graph, &mut last, &mut next_bond, 15, false); i += 1; }
-            'S' => { push_atom(&mut graph, &mut last, &mut next_bond, 16, false); i += 1; }
-            'I' => { push_atom(&mut graph, &mut last, &mut next_bond, 53, false); i += 1; }
+            'N' => { push_atom(&mut graph, &mut last, &mut next_bond, 7,  false, 0); i += 1; }
+            'O' => { push_atom(&mut graph, &mut last, &mut next_bond, 8,  false, 0); i += 1; }
+            'F' => { push_atom(&mut graph, &mut last, &mut next_bond, 9,  false, 0); i += 1; }
+            'P' => { push_atom(&mut graph, &mut last, &mut next_bond, 15, false, 0); i += 1; }
+            'S' => { push_atom(&mut graph, &mut last, &mut next_bond, 16, false, 0); i += 1; }
+            'I' => { push_atom(&mut graph, &mut last, &mut next_bond, 53, false, 0); i += 1; }
             // Explicit bonds
             '=' => { next_bond = Some(BondType::Double);   i += 1; }
             '#' => { next_bond = Some(BondType::Triple);   i += 1; }
@@ -146,17 +162,17 @@ fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
                     return Err(IngestionError::InvalidSmiles(format!("bad '%' at pos {i}")));
                 }
             }
-            // Bracket atoms: [Na+], [NH2], [2H], etc.
+            // Bracket atoms: [Na+], [C@H], [NH2], [2H], etc.
             '[' => {
                 let rel_end = chars[i..].iter().position(|&ch| ch == ']')
                     .ok_or_else(|| IngestionError::InvalidSmiles("unclosed '['".into()))?;
                 let inner: String = chars[i+1..i+rel_end].iter().collect();
-                let (anum, is_ar) = bracket_atomic_num(&inner);
-                push_atom(&mut graph, &mut last, &mut next_bond, anum, is_ar);
+                let (anum, is_ar, chiral) = parse_bracket_atom(&inner);
+                push_atom(&mut graph, &mut last, &mut next_bond, anum, is_ar, chiral);
                 i += rel_end + 1;
             }
-            // Skip: stereochemistry, disconnected component separator, whitespace
-            '/' | '\\' | '@' | '.' | ' ' | '\t' => { i += 1; }
+            // Skip: bond direction, disconnected component separator, whitespace
+            '/' | '\\' | '.' | ' ' | '\t' => { i += 1; }
             _ => return Err(IngestionError::InvalidSmiles(
                 format!("unexpected character '{c}' at position {i}")
             )),
@@ -173,6 +189,9 @@ fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
     }
 
     assign_implicit_hs(&mut graph);
+    assign_degree(&mut graph);
+    assign_ring_membership(&mut graph);
+    assign_hybridization(&mut graph);
 
     Ok(PyMolGraph { graph, canonical_smiles: smiles.to_string() })
 }
@@ -235,6 +254,85 @@ fn bond_order(bt: BondType) -> f32 {
         BondType::Double   => 2.0,
         BondType::Triple   => 3.0,
         BondType::Aromatic => 1.5,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Post-processing passes (run after graph is locked)
+// ---------------------------------------------------------------------------
+
+fn assign_degree(graph: &mut MolGraph) {
+    let indices: Vec<_> = graph.node_indices().collect();
+    for idx in indices {
+        graph[idx].degree = graph.edges(idx).count() as u8;
+    }
+}
+
+/// Mark atoms that lie on at least one ring.
+/// An edge is a ring edge iff its endpoints remain connected when it is removed.
+/// All atoms incident to ring edges are in a ring.
+fn assign_ring_membership(graph: &mut MolGraph) {
+    let mut in_ring: HashSet<NodeIndex> = HashSet::new();
+    let edge_ids: Vec<_> = graph.edge_indices().collect();
+
+    for eid in edge_ids {
+        let (s, d) = graph.edge_endpoints(eid).unwrap();
+        if bfs_connected_excluding(graph, s, d, eid) {
+            in_ring.insert(s);
+            in_ring.insert(d);
+        }
+    }
+
+    for idx in graph.node_indices().collect::<Vec<_>>() {
+        graph[idx].in_ring = in_ring.contains(&idx);
+    }
+}
+
+/// BFS from `src` to `dst`, skipping `excluded` edge.  Returns true if reachable.
+fn bfs_connected_excluding(
+    graph: &MolGraph,
+    src: NodeIndex,
+    dst: NodeIndex,
+    excluded: EdgeIndex,
+) -> bool {
+    let mut visited: HashSet<NodeIndex> = HashSet::new();
+    let mut queue: VecDeque<NodeIndex> = VecDeque::new();
+    queue.push_back(src);
+    visited.insert(src);
+
+    while let Some(node) = queue.pop_front() {
+        for er in graph.edges(node) {
+            if er.id() == excluded { continue; }
+            let nb = if er.source() == node { er.target() } else { er.source() };
+            if nb == dst { return true; }
+            if visited.insert(nb) { queue.push_back(nb); }
+        }
+    }
+    false
+}
+
+/// Infer hybridization from bond types incident to each atom.
+///   sp  (1) — any triple bond
+///   sp2 (2) — aromatic or any double bond
+///   sp3 (3) — everything else
+fn assign_hybridization(graph: &mut MolGraph) {
+    let indices: Vec<_> = graph.node_indices().collect();
+    for idx in indices {
+        let mut has_double = false;
+        let mut has_triple = false;
+        let is_aromatic = graph[idx].is_aromatic;
+
+        for er in graph.edges(idx) {
+            match er.weight().bond_type {
+                BondType::Double   => has_double = true,
+                BondType::Triple   => has_triple = true,
+                _ => {}
+            }
+        }
+
+        graph[idx].hybridization = if has_triple       { 1 }  // sp
+                                   else if is_aromatic || has_double { 2 }  // sp2
+                                   else                { 3 }; // sp3
     }
 }
 

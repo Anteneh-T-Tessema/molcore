@@ -19,7 +19,7 @@ def test_pyg_no_copy():
     data = mol.to_pyg()
     assert data.edge_index.dtype == torch.long,  "edge_index must be int64 for PyG"
     assert data.x.dtype == torch.float32,        "node features must be float32"
-    assert data.x.shape[1] == 4,                 "4 node features"
+    assert data.x.shape[1] == 9,                 "9 node features"
     assert data.edge_attr.shape[1] == 4,         "4 bond features"
 
 

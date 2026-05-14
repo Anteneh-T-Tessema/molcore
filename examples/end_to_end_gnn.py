@@ -46,7 +46,7 @@ DATASET = [
 # ---------------------------------------------------------------------------
 
 class MolGCN(torch.nn.Module):
-    def __init__(self, node_features: int = 4, hidden: int = 32):
+    def __init__(self, node_features: int = 9, hidden: int = 32):
         super().__init__()
         self.conv1 = GCNConv(node_features, hidden)
         self.conv2 = GCNConv(hidden, hidden)
@@ -126,7 +126,7 @@ def main():
     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True)
     test_loader  = DataLoader(test_ds,  batch_size=8)
 
-    model     = MolGCN(node_features=4, hidden=32)
+    model     = MolGCN(node_features=9, hidden=32)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     print(f"\nTraining 2-layer GCN for 100 epochs...")

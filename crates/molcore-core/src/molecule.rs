@@ -9,6 +9,11 @@ pub struct Atom {
     pub is_aromatic: bool,
     pub formal_charge: i8,
     pub num_hs: u8,
+    // --- enriched features (assigned by post-processing in ingest) ---
+    pub degree: u8,         // heavy-atom neighbor count
+    pub in_ring: bool,
+    pub hybridization: u8,  // 0=unknown, 1=sp, 2=sp2, 3=sp3
+    pub chirality: u8,      // 0=none, 1=@ (anticlockwise/S), 2=@@ (clockwise/R)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

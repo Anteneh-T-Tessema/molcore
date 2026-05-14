@@ -44,9 +44,53 @@ class Mol:
         from molcore.featurizers.graph import to_dgl_graph
         return to_dgl_graph(self._graph)
 
+    def to_pyg_hetero(self):
+        from molcore.featurizers.graph import to_pyg_hetero
+        return to_pyg_hetero(self._graph)
+
     def fingerprint(self, radius: int = 2, nbits: int = 2048, backend: str = "rust"):
         from molcore.pipeline import featurize_smiles
         return featurize_smiles([self.smiles], radius=radius, nbits=nbits, backend=backend)[0]
+
+    # --- substructure search ---
+
+    def matches(self, smarts: str) -> bool:
+        """Return True if this molecule contains the SMARTS substructure."""
+        return rdkit_bridge.substructure_match(self.smiles, smarts)
+
+    def find_substructures(self, smarts: str) -> list[tuple[int, ...]]:
+        """Return all atom-index tuples matching the SMARTS pattern."""
+        return rdkit_bridge.substructure_matches(self.smiles, smarts)
+
+    # --- scaffold ---
+
+    def scaffold(self, generic: bool = False) -> "Mol":
+        """Return the Murcko scaffold as a new Mol (empty Mol if no rings)."""
+        smi = rdkit_bridge.murcko_scaffold(self.smiles, generic=generic)
+        if not smi:
+            return Mol.from_smiles("C")  # degenerate: no ring system
+        return Mol.from_smiles(smi)
+
+    # --- 3D conformers ---
+
+    def conformers(
+        self,
+        n_confs: int = 1,
+        seed: int = 42,
+        force_field: str = "MMFF94",
+    ):
+        """
+        Generate 3D conformers. Returns list of (n_atoms, 3) numpy arrays.
+        Requires: rdkit (always available) + a molecule that can be embedded.
+        """
+        import numpy as np
+        return rdkit_bridge.generate_conformers(
+            self.smiles, n_confs=n_confs, seed=seed, force_field=force_field
+        )
+
+    def descriptors_3d(self, seed: int = 42) -> dict[str, float]:
+        """Compute 3D shape descriptors (PMI, asphericity, etc.)."""
+        return rdkit_bridge.calc_descriptors_3d(self.smiles, seed=seed)
 
     def __repr__(self) -> str:
         return f"Mol(smiles={self.smiles!r}, atoms={self._graph.num_atoms()}, bonds={self._graph.num_bonds()})"
