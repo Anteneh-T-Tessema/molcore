@@ -23,6 +23,7 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 
 from molcore.molecule import Mol
 from molcore.io import MolDataset
+from molcore.predictor import PropertyPredictor
 
 # Try multiple mirrors in order — ESOL moves around as repos restructure
 ESOL_URLS = [
@@ -303,24 +304,47 @@ def main():
     print(f"  RMSE = {test_rmse:.3f} log(mol/L)")
     print(f"{'=' * 60}")
 
-    # Simple pass/fail gate
-    if test_r2 >= 0.5:
-        print(f"PASS — R² {test_r2:.3f} ≥ 0.5 (reasonable GCN on ESOL with 4 node features)")
+    # Pass/fail vs published GCN baseline (Wu et al. MoleculeNet 2018: RMSE ≈ 0.58)
+    baseline_rmse = 0.58
+    delta = test_rmse - baseline_rmse
+    if delta <= 0.05:
+        verdict = f"PASS — within 0.05 RMSE of published baseline ({baseline_rmse})"
+    elif delta <= 0.15:
+        verdict = f"CLOSE — within 0.15 RMSE (try --epochs 300 --hidden 128)"
     else:
-        print(f"NOTE — R² {test_r2:.3f} < 0.5. Adding Morgan fingerprints or more node")
-        print(f"       features (chirality, ring membership) will push this above 0.7.")
+        verdict = f"NOTE — {delta:.2f} above baseline (scaffold split + more epochs recommended)"
+    print(f"\n  {verdict}")
 
-    # Also show MolDataset Parquet round-trip
+    # PropertyPredictor high-level API comparison
+    print(f"\n{'=' * 60}")
+    print("PropertyPredictor API (high-level, same dataset)")
+    print("=" * 60)
+    smiles_list = [r[0] for r in records]
+    labels_arr  = np.array([r[1] for r in records], dtype=np.float32)
+
+    ds = MolDataset.from_smiles(smiles_list, compute_fps=False, compute_desc=False)
+    ds.labels = labels_arr
+    t_ds, v_ds, te_ds = ds.scaffold_split(train_frac=0.8, val_frac=0.1)
+
+    hl_pred = PropertyPredictor(
+        hidden=args.hidden, n_layers=3, dropout=args.dropout,
+        epochs=min(args.epochs, 100), lr=args.lr, batch_size=args.batch,
+    )
+    hl_pred.fit(t_ds, val_dataset=v_ds if len(v_ds) > 0 else None, verbose=False)
+    hl_m = hl_pred.score(te_ds)
+    print(f"  RMSE={hl_m['rmse']:.4f}  MAE={hl_m['mae']:.4f}  R²={hl_m['r2']:.4f}  n={hl_m['n']}")
+
+    # Parquet round-trip demo
     print(f"\nParquet round-trip demo:")
-    smiles = [r[0] for r in records[:20]]
-    ds = MolDataset.from_smiles(smiles, compute_fps=True, fp_backend="rust")
+    sample = [r[0] for r in records[:20]]
+    ds20 = MolDataset.from_smiles(sample, compute_fps=True, fp_backend="rust")
     import tempfile, pathlib
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "esol_sample.parquet"
-        ds.write_parquet(path)
-        ds2 = MolDataset.read_parquet(path)
-    print(f"  Wrote/read {len(ds2)} molecules — fps shape {ds2.fingerprints.shape}")
-    print(f"  Round-trip exact: {(ds2.fingerprints == ds.fingerprints).all()}")
+        ds20.write_parquet(path)
+        ds20b = MolDataset.read_parquet(path)
+    print(f"  Wrote/read {len(ds20b)} molecules — fps shape {ds20b.fingerprints.shape}")
+    print(f"  Round-trip exact: {(ds20b.fingerprints == ds20.fingerprints).all()}")
 
 
 if __name__ == "__main__":

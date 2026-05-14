@@ -329,18 +329,30 @@ class PropertyPredictor:
     def score(self, dataset) -> dict[str, float]:
         """
         Evaluate on a labelled MolDataset. Returns R², MAE, RMSE.
+
+        Works for both single-task (N,) and multi-task (N, k) labels.
+        Multi-task metrics are averaged across output dimensions.
         """
         if self._model is None:
             raise RuntimeError("Model not trained — call fit() first")
-        graphs = _dataset_to_pyg(dataset)
         smiles = [dataset.smiles[i] for i in range(len(dataset))]
-        preds = self.predict(smiles)
-        targets = dataset.labels.flatten()
-        mask = ~np.isnan(preds)
-        p, t = preds[mask], targets[mask]
-        ss_res = ((p - t) ** 2).sum()
-        ss_tot = ((t - t.mean()) ** 2).sum()
-        r2  = float(1 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
+        preds   = self.predict(smiles)         # (N,) or (N, k)
+        labels  = dataset.labels               # (N,) or (N, k)
+
+        if preds.ndim == 1:
+            mask = ~np.isnan(preds)
+        else:
+            mask = ~np.isnan(preds).any(axis=1)
+
+        p, t = preds[mask], labels[mask]
+
+        if len(p) == 0:
+            return {"r2": float("nan"), "mae": float("nan"),
+                    "rmse": float("nan"), "n": 0}
+
+        ss_res = float(((p - t) ** 2).sum())
+        ss_tot = float(((t - t.mean(axis=0)) ** 2).sum())
+        r2   = float(1 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
         mae  = float(np.abs(p - t).mean())
         rmse = float(np.sqrt(((p - t) ** 2).mean()))
         return {"r2": r2, "mae": mae, "rmse": rmse, "n": int(mask.sum())}

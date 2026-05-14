@@ -52,3 +52,44 @@ def test_pyg_benzene_node_count():
     data = Mol.from_smiles("c1ccccc1").to_pyg()
     assert data.x.shape[0] == 6   # 6 carbons
     assert data.edge_index.shape[1] == 12  # 6 bonds × 2 (bidirectional)
+
+
+# ── Invariant guards — these must never change without a major version bump ───
+
+def test_node_feature_dim_invariant():
+    """NODE_FEAT_DIM=9 is load-bearing: trained GNN weights depend on it."""
+    data = Mol.from_smiles("CCO").to_pyg()
+    assert data.x.shape[1] == 9, \
+        f"Node feature dim changed: {data.x.shape[1]} != 9. " \
+        "All GNN models must be retrained after changing this."
+
+
+def test_ecfp4_bit_stability():
+    """Same SMILES must produce identical bit vectors across calls (deterministic)."""
+    fps1 = molcore.featurize_smiles(["c1ccccc1"], backend="rust")
+    fps2 = molcore.featurize_smiles(["c1ccccc1"], backend="rust")
+    assert (fps1 == fps2).all(), "Fingerprint is not deterministic — Rust RNG leak?"
+
+
+def test_scaffold_split_reproducible():
+    """Scaffold split with fixed seed must return identical partitions across runs."""
+    from molcore.io import MolDataset
+    smiles = ["CCO", "c1ccccc1", "CC(=O)O", "CCN", "CCCC"] * 4
+    ds = MolDataset.from_smiles(smiles, compute_fps=False, compute_desc=False)
+    t1, v1, _ = ds.scaffold_split(seed=42)
+    t2, v2, _ = ds.scaffold_split(seed=42)
+    assert t1.smiles == t2.smiles, "Train split not reproducible with same seed"
+    assert v1.smiles == v2.smiles, "Val split not reproducible with same seed"
+
+
+def test_scaffold_split_different_seeds_differ():
+    """Different seeds should (almost always) produce different splits."""
+    from molcore.io import MolDataset
+    smiles = ["CCO", "c1ccccc1", "CC(=O)O", "CCN", "CCCC",
+              "c1ccncc1", "Nc1ccccc1", "COc1ccccc1"]
+    ds = MolDataset.from_smiles(smiles, compute_fps=False, compute_desc=False)
+    t1, _, _ = ds.scaffold_split(seed=42)
+    t2, _, _ = ds.scaffold_split(seed=99)
+    # Not guaranteed to differ for tiny datasets, but scaffold grouping makes it likely
+    # — this test is advisory, not strict
+    _ = t1, t2  # just ensure no exception

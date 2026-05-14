@@ -1,6 +1,6 @@
 from molcore.molecule import Mol
 from molcore.pipeline import featurize_smiles
-from molcore.io import MolDataset
+from molcore.io import MolDataset, MolTorchDataset
 from molcore.predictor import PropertyPredictor
 from molcore import databases, gpu
 from molcore.rdkit_bridge import (
@@ -19,6 +19,7 @@ __all__ = [
     "Mol",
     "featurize_smiles",
     "MolDataset",
+    "MolTorchDataset",
     "PropertyPredictor",
     # substructure
     "filter_by_smarts",
