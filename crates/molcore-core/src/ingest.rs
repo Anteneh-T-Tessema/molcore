@@ -80,7 +80,7 @@ fn bracket_atomic_num(inner: &str) -> (u8, bool) {
 fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
     let chars: Vec<char> = smiles.chars().collect();
     let len = chars.len();
-    let mut graph = MolGraph::new();
+    let mut graph: MolGraph = petgraph::stable_graph::StableGraph::default();
     let mut i = 0usize;
     let mut last: Option<NodeIndex> = None;
     let mut branch_stack: Vec<Option<NodeIndex>> = Vec::new();
@@ -172,7 +172,70 @@ fn ingest_builtin(smiles: &str) -> Result<PyMolGraph, IngestionError> {
         ));
     }
 
+    assign_implicit_hs(&mut graph);
+
     Ok(PyMolGraph { graph, canonical_smiles: smiles.to_string() })
+}
+
+/// Post-processing: compute implicit hydrogen count for each heavy atom.
+///
+/// Algorithm: num_hs = max(0, standard_valence(atom) - sum(bond_orders) + formal_charge)
+/// For aromatic atoms, aromatic bonds count as order 1.5 (Kekulé convention approximation).
+/// Bracket atoms that explicitly set num_hs (future: parse from [NH2] syntax) are skipped.
+///
+/// Limitations vs RDKit:
+/// - Does not handle P, S hypervalent states
+/// - Does not handle charged atoms beyond formal_charge
+/// - Use rdkit_bridge.calc_descriptors_rdkit for exact values
+fn assign_implicit_hs(graph: &mut MolGraph) {
+    let indices: Vec<_> = graph.node_indices().collect();
+    for idx in indices {
+        let bond_sum: f32 = graph
+            .edges(idx)
+            .map(|e| bond_order(e.weight().bond_type))
+            .sum();
+
+        let atom = &graph[idx];
+        // Bracket atoms may have explicit H — skip if already set
+        // (Currently our parser always sets 0; this guard is for future bracket H parsing)
+        if atom.num_hs != 0 {
+            continue;
+        }
+        let std_val = standard_valence(atom.atomic_num) as f32;
+        let charge  = atom.formal_charge as f32;
+        // Aromatic atoms lose 0.5 from effective valence (pi electron participation)
+        let aromatic_adj = if atom.is_aromatic { 0.5 } else { 0.0 };
+
+        let hs = (std_val - bond_sum - aromatic_adj + charge).max(0.0).round() as u8;
+        graph[idx].num_hs = hs;
+    }
+}
+
+fn standard_valence(atomic_num: u8) -> u8 {
+    match atomic_num {
+        1  => 1,  // H
+        5  => 3,  // B
+        6  => 4,  // C
+        7  => 3,  // N  (no hypervalent case)
+        8  => 2,  // O
+        9  => 1,  // F
+        14 => 4,  // Si
+        15 => 3,  // P  (simplified — 5 also valid)
+        16 => 2,  // S  (simplified — 4, 6 also valid)
+        17 => 1,  // Cl
+        35 => 1,  // Br
+        53 => 1,  // I
+        _  => 0,  // unknown element — no implicit H
+    }
+}
+
+fn bond_order(bt: BondType) -> f32 {
+    match bt {
+        BondType::Single   => 1.0,
+        BondType::Double   => 2.0,
+        BondType::Triple   => 3.0,
+        BondType::Aromatic => 1.5,
+    }
 }
 
 #[cfg(feature = "rdkit-backend")]

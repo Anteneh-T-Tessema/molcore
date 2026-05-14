@@ -1,4 +1,5 @@
 use petgraph::stable_graph::StableGraph;
+use petgraph::Undirected;
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +25,8 @@ pub enum BondType {
     Aromatic,
 }
 
-pub type MolGraph = StableGraph<Atom, Bond>;
+/// Undirected so `graph.edges(idx)` yields all incident bonds without direction bookkeeping.
+pub type MolGraph = StableGraph<Atom, Bond, Undirected>;
 
 /// Immutable molecule graph exposed to Python.
 /// The petgraph is locked at construction — no mutation after `from_smiles`.

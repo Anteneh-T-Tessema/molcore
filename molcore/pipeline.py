@@ -3,6 +3,7 @@ pipeline.py — batch-first primary entry point.
 Always call this; per-mol methods are convenience wrappers around it.
 """
 import torch
+from observability.metrics.skill_metrics import timed as _timed
 
 
 def featurize_smiles(
@@ -25,11 +26,12 @@ def featurize_smiles(
     if kind != "ecfp4":
         raise ValueError(f"Unsupported featurization kind: {kind!r}. Supported: 'ecfp4'")
 
-    if backend == "rust":
-        from molcore.featurizers.fingerprints import ecfp4
-        return ecfp4(smiles, radius=radius, nbits=nbits)
-    elif backend == "rdkit":
-        from molcore.rdkit_bridge import ecfp4_rdkit
-        return ecfp4_rdkit(smiles, radius=radius, nbits=nbits)
-    else:
-        raise ValueError(f"Unknown backend: {backend!r}. Choose 'rust' or 'rdkit'.")
+    with _timed("fingerprint", batch_size=len(smiles)):
+        if backend == "rust":
+            from molcore.featurizers.fingerprints import ecfp4
+            return ecfp4(smiles, radius=radius, nbits=nbits)
+        elif backend == "rdkit":
+            from molcore.rdkit_bridge import ecfp4_rdkit
+            return ecfp4_rdkit(smiles, radius=radius, nbits=nbits)
+        else:
+            raise ValueError(f"Unknown backend: {backend!r}. Choose 'rust' or 'rdkit'.")
