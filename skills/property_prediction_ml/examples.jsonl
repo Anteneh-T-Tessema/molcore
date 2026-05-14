@@ -1,0 +1,6 @@
+{"input": {"smiles": ["CCO", "c1ccccc1", "CC(=O)O"], "labels": [-0.14, 1.68, -0.17], "task": "train_predict", "epochs": 10}, "expected": {"preds_shape": [3], "dtype": "float32"}}
+{"input": {"smiles": ["CCO"], "task": "predict_pretrained", "model_path": "logp_gcn.pt"}, "expected": {"preds_shape": [1], "no_nan": true}}
+{"input": {"smiles": ["INVALID_SMILES", "CCO"], "task": "predict"}, "expected": {"preds_shape": [2], "index_0_is_nan": true, "comment": "invalid SMILES → NaN, valid → float"}}
+{"input": {"smiles": ["CCO", "c1ccccc1"], "n_samples": 20, "task": "predict_with_uncertainty"}, "expected": {"mean_shape": [2], "std_shape": [2], "std_positive": true}}
+{"input": {"smiles": ["CCO", "c1ccccc1", "CC(=O)O", "CCN"], "labels": [[-0.14, 46.07], [1.68, 78.11], [-0.17, 60.05], [-0.13, 45.08]], "n_outputs": 2, "task": "multitask"}, "expected": {"preds_shape": [4, 2]}}
+{"input": {"train_smiles": ["CCO", "c1ccccc1", "CC(=O)O"], "train_labels": [-0.14, 1.68, -0.17], "test_smiles": ["CCCC"], "task": "save_load_predict"}, "expected": {"preds_shape": [1], "no_nan": true, "comment": "save/load round-trip must work on new SMILES"}}

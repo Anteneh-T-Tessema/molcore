@@ -1,0 +1,7 @@
+allow:
+  - molcore_agent
+  - synthesis_agent
+  - lead_opt_agent
+  - metabolite_agent
+deny:
+  - "*"

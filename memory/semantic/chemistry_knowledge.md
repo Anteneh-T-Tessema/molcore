@@ -60,6 +60,24 @@ Any GNN built on molcore must use `in_features=9`. Models from before this expan
 - Benzene: asphericity ≈ 0.25 (oblate disc), NPR1 ≈ 0.46, NPR2 ≈ 0.66
 - Always fix ETKDGv3 seed for reproducibility in downstream comparisons
 
+## Reaction SMARTS conventions
+
+- Format: `reactants>>products` using atom-map numbers `[C:1]` to track atoms
+- Unimolecular: one reactant; bimolecular: `.` separates two reactants in the left side
+- Empty product list = no match (not an error); ValueError = bad SMARTS syntax
+- Common patterns: ester hydrolysis, amide coupling, N-Boc deprotection, reductive amination
+- `enumerate_reactions` applies a transform to a library; cap with `max_products` for large libs
+
+## GCN property prediction (PropertyPredictor)
+
+- Architecture: 3-layer GCN → global mean pool → linear head; `in_features=9` (NODE_FEAT_DIM)
+- Single-task: `n_outputs=1`, labels shape `(N,)`. Multi-task: `n_outputs=k`, labels shape `(N, k)`.
+- Multi-task batch labels stored as `(1, k)` per molecule so PyG batches to `(B, k)`, not `(B*k,)`
+- Scheduler: ReduceLROnPlateau(factor=0.5, patience=15); best-val checkpoint restored at end
+- MC Dropout uncertainty: keep dropout active at inference; run n_samples forward passes; return mean ± std
+- Epistemic std is a relative measure — use for ranking, not as calibrated confidence interval
+- Always scaffold-split labelled datasets before training; random split leaks scaffold information
+
 ## Data sources
 
 - PubChem: structure lookup, synonyms, basic properties

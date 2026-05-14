@@ -10,6 +10,7 @@ from molcore.rdkit_bridge import (
     substructure_match,
     substructure_matches,
     react,
+    react_bimolecular,
     enumerate_reactions,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "scaffold_split",
     # reactions
     "react",
+    "react_bimolecular",
     "enumerate_reactions",
     # namespaces
     "databases",

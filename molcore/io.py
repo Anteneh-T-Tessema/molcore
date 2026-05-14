@@ -216,10 +216,10 @@ class MolDataset:
                 if self.labels is not None:
                     import torch
                     lbl = self.labels[i]
-                    data.y = torch.tensor(
-                        [float(lbl)] if np.ndim(lbl) == 0 else lbl.tolist(),
-                        dtype=torch.float32,
-                    )
+                    if np.ndim(lbl) == 0:
+                        data.y = torch.tensor([float(lbl)], dtype=torch.float32)
+                    else:
+                        data.y = torch.tensor(lbl, dtype=torch.float32).unsqueeze(0)
                 graphs.append(data)
             except Exception:
                 pass
@@ -332,6 +332,19 @@ class MolDataset:
     def __len__(self) -> int:
         return len(self.smiles)
 
+    def __getitem__(self, idx: int) -> "MolDataset":
+        """Integer index → single-row MolDataset. Supports negative indexing."""
+        if idx < 0:
+            idx = len(self) + idx
+        if not (0 <= idx < len(self)):
+            raise IndexError(f"index {idx} out of range for dataset of size {len(self)}")
+        return self._subset([idx])
+
+    def __iter__(self):
+        """Iterate over rows, each yielding a single-row MolDataset."""
+        for i in range(len(self)):
+            yield self._subset([i])
+
     def __repr__(self) -> str:
         has_fps  = self.fingerprints is not None
         has_desc = self.descriptors  is not None
@@ -342,3 +355,62 @@ class MolDataset:
             f"desc={'yes' if has_desc else 'no'}, "
             f"3d={'yes' if has_3d else 'no'})"
         )
+
+
+# ---------------------------------------------------------------------------
+# PyTorch Dataset wrapper
+# ---------------------------------------------------------------------------
+
+class MolTorchDataset:
+    """
+    Wraps a MolDataset as a PyTorch Dataset for use with DataLoader.
+
+    Each item is a `torch_geometric.data.Data` object with:
+      - `data.x`          : (N, 9) float32 node features
+      - `data.edge_index` : (2, E) int64
+      - `data.edge_attr`  : (E, 4) float32
+      - `data.y`          : float32 label scalar (if dataset.labels is not None)
+      - `data.smiles`     : str canonical SMILES
+
+    Usage:
+        from torch_geometric.loader import DataLoader
+        torch_ds = MolTorchDataset(ds)
+        loader = DataLoader(torch_ds, batch_size=32, shuffle=True)
+    """
+
+    def __init__(self, dataset: MolDataset):
+        self._ds = dataset
+        self._graphs: Optional[list] = None  # lazy-built
+
+    def _build(self) -> None:
+        from molcore.molecule import Mol
+        import torch
+        graphs = []
+        for i, smi in enumerate(self._ds.smiles):
+            try:
+                data = Mol.from_smiles(smi).to_pyg()
+                data.smiles = smi
+                if self._ds.labels is not None:
+                    lbl = self._ds.labels[i]
+                    if np.ndim(lbl) == 0:
+                        data.y = torch.tensor([float(lbl)], dtype=torch.float32)
+                    else:
+                        data.y = torch.tensor(lbl, dtype=torch.float32).unsqueeze(0)
+                graphs.append(data)
+            except Exception:
+                graphs.append(None)
+        self._graphs = graphs
+
+    def __len__(self) -> int:
+        return len(self._ds)
+
+    def __getitem__(self, idx: int):
+        if self._graphs is None:
+            self._build()
+        item = self._graphs[idx]
+        if item is None:
+            raise ValueError(f"Molecule at index {idx} ({self._ds.smiles[idx]!r}) could not be parsed")
+        return item
+
+    def __repr__(self) -> str:
+        return f"MolTorchDataset(n={len(self)}, built={self._graphs is not None})"

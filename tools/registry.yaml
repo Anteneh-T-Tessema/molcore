@@ -46,6 +46,20 @@ tools:
     skill: property_prediction
     modes: [descriptors_3d, coordinates, batch_descriptors]
 
+  reaction:
+    type: local
+    path: tools/local/reaction.py
+    description: Apply reaction SMARTS — unimolecular, bimolecular, or library enumeration
+    skill: reaction
+    modes: [unimolecular, bimolecular, enumerate]
+
+  predict:
+    type: local
+    path: tools/local/predict.py
+    description: GCN property prediction from a saved .pt checkpoint; supports MC Dropout uncertainty
+    skill: property_prediction_ml
+    modes: [predict, predict_uncertainty]
+
   pubchem_mcp:
     type: mcp
     path: tools/mcp/pubchem_mcp.yaml

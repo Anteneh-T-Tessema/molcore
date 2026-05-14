@@ -1,0 +1,7 @@
+allow:
+  - molcore_agent
+  - ml_training_agent
+  - lead_opt_agent
+  - screening_agent
+deny:
+  - "*"

@@ -1,0 +1,6 @@
+{"input": {"smiles": "CC(=O)OCC", "rxn_smarts": "[C:1](=O)[O:2][C:3]>>[C:1](=O)[OH].[C:3][OH]"}, "expected": {"n_products_gte": 1, "comment": "ethyl acetate hydrolysis → acetic acid + ethanol"}}
+{"input": {"smiles": "c1ccccc1", "rxn_smarts": "[C:1](=O)[O:2][C:3]>>[C:1](=O)[OH].[C:3][OH]"}, "expected": {"products": [], "comment": "benzene has no ester — returns empty"}}
+{"input": {"smiles_a": "CC(=O)O", "smiles_b": "CCN", "rxn_smarts": "[C:1](=O)[OH].[N:2]>>[C:1](=O)[N:2]", "mode": "bimolecular"}, "expected": {"n_products_gte": 1, "comment": "amide coupling — acetic acid + ethylamine"}}
+{"input": {"reactants": ["CC(=O)OCC", "CC(=O)OCCC", "CC(=O)OC"], "rxn_smarts": "[C:1](=O)[O:2][C:3]>>[C:1](=O)[OH].[C:3][OH]", "max_products": 10, "mode": "enumerate"}, "expected": {"n_products_gte": 2, "n_products_lte": 10}}
+{"input": {"smiles": "CCO", "rxn_smarts": "INVALID_SMARTS_NO_ARROW"}, "expected": {"error": "ValueError", "match": "Invalid reaction SMARTS"}}
+{"input": {"smiles": "CC(=O)OCC", "rxn_smarts": "[C:1](=O)[O:2][C:3]>>[C:1](=O)[OH].[C:3][OH]", "return_mol": true}, "expected": {"return_type": "list[Mol]", "comment": "Mol.react() returns Mol objects, not strings"}}

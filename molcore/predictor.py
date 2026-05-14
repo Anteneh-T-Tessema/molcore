@@ -218,6 +218,66 @@ class PropertyPredictor:
         result[valid_idx] = preds_t
         return result
 
+    def predict_with_uncertainty(
+        self,
+        smiles: list[str],
+        n_samples: int = 30,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        MC Dropout uncertainty estimation.
+
+        Runs `n_samples` stochastic forward passes with dropout active, then
+        returns (mean, std) over the sample dimension.
+
+        Returns:
+            mean : (N,) float32 — point estimate (mean over samples)
+            std  : (N,) float32 — epistemic uncertainty proxy (std over samples)
+        Molecules that fail to parse receive NaN in both arrays.
+        """
+        if self._model is None:
+            raise RuntimeError("Model not trained — call fit() first")
+
+        from molcore.molecule import Mol
+        from torch_geometric.loader import DataLoader
+
+        dev = self._resolve_device()
+        self._model.to(dev)
+
+        graphs, valid_idx = [], []
+        for i, smi in enumerate(smiles):
+            try:
+                graphs.append(Mol.from_smiles(smi).to_pyg())
+                valid_idx.append(i)
+            except Exception:
+                pass
+
+        n = len(smiles)
+        shape = (n,) if self.n_outputs == 1 else (n, self.n_outputs)
+        mean_arr = np.full(shape, float("nan"), dtype=np.float32)
+        std_arr  = np.full(shape, float("nan"), dtype=np.float32)
+
+        if not graphs:
+            return mean_arr, std_arr
+
+        loader = DataLoader(graphs, batch_size=self.batch_size)
+
+        # enable dropout at inference
+        self._model.train()
+        samples: list[np.ndarray] = []
+        with torch.no_grad():
+            for _ in range(n_samples):
+                preds = []
+                for batch in loader:
+                    batch = batch.to(dev)
+                    preds.append(self._model(batch).cpu().numpy())
+                samples.append(np.concatenate(preds, axis=0))
+        self._model.eval()
+
+        stacked = np.stack(samples, axis=0)  # (n_samples, N_valid, ...)
+        mean_arr[valid_idx] = stacked.mean(axis=0)
+        std_arr[valid_idx]  = stacked.std(axis=0)
+        return mean_arr, std_arr
+
     @property
     def history(self) -> dict:
         """Training history: {'train': [...], 'val': [...]}"""
@@ -336,10 +396,11 @@ def _dataset_to_pyg(dataset) -> list:
             data = Mol.from_smiles(smi).to_pyg()
             if dataset.labels is not None:
                 lbl = dataset.labels[i]
-                data.y = torch.tensor(
-                    [float(lbl)] if np.ndim(lbl) == 0 else lbl.tolist(),
-                    dtype=torch.float32,
-                )
+                if np.ndim(lbl) == 0:
+                    data.y = torch.tensor([float(lbl)], dtype=torch.float32)
+                else:
+                    # unsqueeze so PyG batches (1, k) → (B, k), not (k,) → (B*k,)
+                    data.y = torch.tensor(lbl, dtype=torch.float32).unsqueeze(0)
             graphs.append(data)
         except Exception:
             pass
