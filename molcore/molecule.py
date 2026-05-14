@@ -62,6 +62,25 @@ class Mol:
         """Return all atom-index tuples matching the SMARTS pattern."""
         return rdkit_bridge.substructure_matches(self.smiles, smarts)
 
+    # --- reaction transforms ---
+
+    def react(self, rxn_smarts: str) -> list["Mol"]:
+        """
+        Apply a unimolecular reaction SMARTS to this molecule.
+
+        Returns a list of product Mol instances (empty list if no reaction occurs).
+        Example — methyl ester hydrolysis:
+            mol.react("[C:1](=O)O[CH3:2]>>[C:1](=O)[OH]")
+        """
+        products = rdkit_bridge.react(self.smiles, rxn_smarts)
+        result = []
+        for smi in products:
+            try:
+                result.append(Mol.from_smiles(smi))
+            except Exception:
+                pass
+        return result
+
     # --- scaffold ---
 
     def scaffold(self, generic: bool = False) -> "Mol":

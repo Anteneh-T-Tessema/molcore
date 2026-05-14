@@ -6,6 +6,28 @@ on:
   pull_request:
 
 jobs:
+  # ── Rust lint ──────────────────────────────────────────────────────────────
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: clippy (deny warnings)
+        run: cargo clippy --workspace -- -D warnings
+        env:
+          PYO3_PYTHON: python3
+
+  # ── Rust tests ────────────────────────────────────────────────────────────
   rust-tests:
     name: Rust unit tests
     runs-on: ubuntu-22.04
@@ -19,18 +41,57 @@ jobs:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: cargo test (pure Rust — no Python required)
+      - name: cargo test molcore-core
         run: cargo test -p molcore-core
         env:
-          # Link against system Python for pyo3 — Ubuntu 22.04 ships 3.10
           PYO3_PYTHON: python3
 
+      - name: cargo test molcore-io
+        run: cargo test -p molcore-io
+
+  # ── Python tests (matrix: 3.11 + 3.12) ───────────────────────────────────
   python-tests:
-    name: Python integration tests
+    name: Python ${{ matrix.python-version }} tests
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-py${{ matrix.python-version }}-pip-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install Python deps
+        run: |
+          pip install maturin
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pytest pyarrow
+
+      - name: Build Rust extension
+        run: maturin develop --release --features extension-module
+
+      - name: Python tests
+        run: pytest tests/python -v --tb=short
+
+  # ── Skill evals ───────────────────────────────────────────────────────────
+  evals:
+    name: Skill evals
+    runs-on: ubuntu-22.04
+    needs: python-tests
+
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: actions/setup-python@v5
@@ -41,34 +102,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
-
-      - name: Install Python deps
-        run: |
-          pip install maturin torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pytest
-
-      - name: Build Rust extension
-        run: maturin develop --release --features extension-module
-
-      - name: Python tests
-        run: pytest tests/python -v --tb=short
-
-  evals:
-    name: Skill evals
-    runs-on: ubuntu-22.04
-    needs: python-tests
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+          key: ${{ runner.os }}-py3.12-pip-${{ hashFiles('pyproject.toml') }}
 
       - name: Install + build
         run: |
-          pip install maturin torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pytest
+          pip install maturin
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pytest pyarrow
           maturin develop --release --features extension-module
 
       - name: Run evals

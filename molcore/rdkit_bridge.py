@@ -215,6 +215,105 @@ def generate_conformers(
     return confs
 
 
+# ---------------------------------------------------------------------------
+# Reaction transforms
+# ---------------------------------------------------------------------------
+
+def _compile_reaction(rxn_smarts: str):
+    from rdkit.Chem import AllChem as _AC
+    try:
+        rxn = _AC.ReactionFromSmarts(rxn_smarts)
+    except Exception as e:
+        raise ValueError(f"Invalid reaction SMARTS: {rxn_smarts!r} — {e}") from e
+    if rxn is None:
+        raise ValueError(f"Invalid reaction SMARTS: {rxn_smarts!r}")
+    return rxn
+
+
+def react(smiles: str, rxn_smarts: str) -> list[str]:
+    """
+    Apply a reaction SMARTS to a single molecule (used as the first reactant).
+
+    Returns a deduplicated list of unique product SMILES.
+    Empty list if no products are formed.
+
+    Example — ester hydrolysis:
+        react("CC(=O)OCC", "[C:1](=O)[O:2][C:3]>>[C:1](=O)[OH].[C:3][OH]")
+    """
+    rxn = _compile_reaction(rxn_smarts)
+    mol = from_smiles(smiles)
+    products = set()
+    for product_set in rxn.RunReactants((mol,)):
+        for p in product_set:
+            try:
+                Chem.SanitizeMol(p)
+                smi = Chem.MolToSmiles(p)
+                if smi:
+                    products.add(smi)
+            except Exception:
+                pass
+    return sorted(products)
+
+
+def react_bimolecular(
+    smiles_a: str,
+    smiles_b: str,
+    rxn_smarts: str,
+) -> list[str]:
+    """
+    Apply a bimolecular reaction SMARTS.
+
+    `smiles_a` is reactant 1, `smiles_b` is reactant 2.
+    Returns deduplicated product SMILES.
+    """
+    rxn  = _compile_reaction(rxn_smarts)
+    mol_a = from_smiles(smiles_a)
+    mol_b = from_smiles(smiles_b)
+    products = set()
+    for product_set in rxn.RunReactants((mol_a, mol_b)):
+        for p in product_set:
+            try:
+                Chem.SanitizeMol(p)
+                smi = Chem.MolToSmiles(p)
+                if smi:
+                    products.add(smi)
+            except Exception:
+                pass
+    return sorted(products)
+
+
+def enumerate_reactions(
+    reactants: list[str],
+    rxn_smarts: str,
+    max_products: int = 1000,
+) -> list[str]:
+    """
+    Apply a unimolecular reaction SMARTS to every molecule in `reactants`.
+
+    Returns a flat deduplicated list of all product SMILES, up to `max_products`.
+    Molecules that don't react are silently skipped.
+    """
+    rxn = _compile_reaction(rxn_smarts)
+    products: set[str] = set()
+    for smi in reactants:
+        if len(products) >= max_products:
+            break
+        try:
+            mol = from_smiles(smi)
+            for product_set in rxn.RunReactants((mol,)):
+                for p in product_set:
+                    try:
+                        Chem.SanitizeMol(p)
+                        s = Chem.MolToSmiles(p)
+                        if s:
+                            products.add(s)
+                    except Exception:
+                        pass
+        except ValueError:
+            pass
+    return sorted(products)[:max_products]
+
+
 def calc_descriptors_3d(smiles: str, seed: int = 42) -> dict[str, float]:
     """
     Compute shape descriptors that require a 3D conformer.
