@@ -1,0 +1,3 @@
+{"input": {"smiles": ["CCO", "c1ccccc1", "CC(=O)O"], "backend": "rust"}, "expected_shape": [3, 2048], "expected_dtype": "uint8"}
+{"input": {"smiles": ["c1ccccc1"], "backend": "rdkit", "radius": 3, "nbits": 1024}, "expected_shape": [1, 1024], "expected_dtype": "uint8"}
+{"input": {"smiles": ["INVALID_SMILES"], "backend": "rust"}, "expected_error": "MolIngestionError"}

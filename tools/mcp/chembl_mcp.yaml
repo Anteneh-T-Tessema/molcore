@@ -1,0 +1,19 @@
+name: chembl_mcp
+type: http
+base_url: https://www.ebi.ac.uk/chembl/api/data
+description: ChEMBL REST API — bioactivity data, target info, assay results
+
+endpoints:
+  molecule_by_smiles:
+    path: /molecule.json?molecule_structures__canonical_smiles={smiles}
+    method: GET
+
+  bioactivity_by_chembl_id:
+    path: /activity.json?molecule_chembl_id={chembl_id}&limit=25
+    method: GET
+
+  target_by_name:
+    path: /target.json?pref_name__icontains={name}
+    method: GET
+
+rate_limit: 10/sec

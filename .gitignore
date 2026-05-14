@@ -1,0 +1,35 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+
+# maturin wheel cache
+*.whl
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Benchmark / profiling output
+*.prof
+*.perf
+
+# molcore-io stub (not yet implemented)
+# keep source, ignore build
+
+# OS
+.DS_Store

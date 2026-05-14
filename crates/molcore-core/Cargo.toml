@@ -1,0 +1,23 @@
+[package]
+name    = "molcore-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name       = "molcore"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3      = { workspace = true }
+numpy     = { workspace = true }
+rayon     = { workspace = true }
+petgraph  = { workspace = true }
+ndarray   = { workspace = true }
+serde     = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+# maturin passes this when building the Python extension (.so).
+# Without it, PyO3 links libpython explicitly — required for `cargo test`.
+extension-module = ["pyo3/extension-module"]
+rdkit-backend    = []

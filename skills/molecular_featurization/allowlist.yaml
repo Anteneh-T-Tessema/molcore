@@ -1,0 +1,6 @@
+allow:
+  - molcore_agent
+  - training_pipeline
+  - gnn_inference_agent
+deny:
+  - "*"

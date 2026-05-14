@@ -1,0 +1,7 @@
+allow:
+  - molcore_agent
+  - screening_agent
+  - training_pipeline
+  - similarity_search_skill  # calls fingerprint as a sub-step
+deny:
+  - "*"  # default deny — agents not in allow list must be added explicitly

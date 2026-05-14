@@ -1,0 +1,24 @@
+# OpenTelemetry configuration for molcore agent skills
+# Plug in your OTLP endpoint (Jaeger, Honeycomb, Grafana Tempo, etc.)
+
+service_name: molcore
+service_version: "0.1.0"
+
+exporters:
+  otlp:
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
+    headers:
+      x-api-key: "${OTEL_API_KEY:-}"
+
+  console:                  # dev fallback — prints to stdout
+    enabled: "${OTEL_CONSOLE:-false}"
+
+trace_sampling:
+  default_ratio: 0.1        # 10% of calls; raise to 1.0 for debugging
+
+instrumented_skills:
+  - fingerprint             # traces: smiles_count, backend, duration_ms
+  - similarity_search       # traces: query_count, library_count, duration_ms
+  - molecular_featurization # traces: smiles, num_atoms, num_edges, duration_ms
+  - property_prediction     # traces: smiles_count, backend, duration_ms
+  - agentic_rag             # traces: query, sources_tried, iterations, duration_ms

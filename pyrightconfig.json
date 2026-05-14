@@ -1,0 +1,9 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "stubPath": "typestubs",
+  "include": ["molcore", "tools", "evals", "tests/python"],
+  "ignore": ["benchmarks"]
+}

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust-tests:
+    name: Rust unit tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: cargo test (pure Rust — no Python required)
+        run: cargo test -p molcore-core
+        env:
+          # Link against system Python for pyo3 — Ubuntu 22.04 ships 3.10
+          PYO3_PYTHON: python3
+
+  python-tests:
+    name: Python integration tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install Python deps
+        run: |
+          pip install maturin torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pytest
+
+      - name: Build Rust extension
+        run: maturin develop --release --features extension-module
+
+      - name: Python tests
+        run: pytest tests/python -v --tb=short
+
+  evals:
+    name: Skill evals
+    runs-on: ubuntu-22.04
+    needs: python-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install + build
+        run: |
+          pip install maturin torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pytest
+          maturin develop --release --features extension-module
+
+      - name: Run evals
+        run: pytest evals/ -v --tb=short

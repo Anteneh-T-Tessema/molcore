@@ -1,0 +1,19 @@
+name: pubchem_mcp
+type: http
+base_url: https://pubchem.ncbi.nlm.nih.gov/rest/pug
+description: PubChem PUG REST API — structure lookup, synonyms, properties
+
+endpoints:
+  smiles_to_cid:
+    path: /compound/smiles/{smiles}/cids/JSON
+    method: GET
+
+  cid_properties:
+    path: /compound/cid/{cid}/property/MolecularFormula,MolecularWeight,XLogP,TPSA/JSON
+    method: GET
+
+  name_to_smiles:
+    path: /compound/name/{name}/property/IsomericSMILES/JSON
+    method: GET
+
+rate_limit: 5/sec  # PubChem public API limit

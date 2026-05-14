@@ -1,0 +1,2 @@
+{"input": {"query": "What is the logP of aspirin?"}, "expected_sources": ["pubchem"], "max_iterations": 2}
+{"input": {"query": "Find compounds similar to c1ccccc1C(=O)O with MW < 300"}, "expected_sources": ["vector_db", "similarity_search"], "max_iterations": 3}

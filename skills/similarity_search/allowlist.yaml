@@ -1,0 +1,6 @@
+allow:
+  - molcore_agent
+  - screening_agent
+  - agentic_rag_skill
+deny:
+  - "*"

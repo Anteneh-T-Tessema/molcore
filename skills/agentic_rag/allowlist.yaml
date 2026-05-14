@@ -1,0 +1,5 @@
+allow:
+  - molcore_agent
+  - research_agent
+deny:
+  - "*"

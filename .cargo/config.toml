@@ -1,0 +1,11 @@
+# Cargo workspace config
+# RUSTFLAGS -L/-lpython3.12 allow `cargo test` to link against the venv's Python.
+# maturin uses extension-module feature which skips Python linking (runtime provides it).
+[env]
+PYO3_PYTHON = { value = ".venv/bin/python", relative = true }
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-L", "/Library/Frameworks/Python.framework/Versions/3.12/lib",
+    "-lpython3.12",
+]

@@ -1,0 +1,2 @@
+{"input": {"query_smiles": ["c1ccccc1"], "library_smiles": ["c1ccccc1", "CCO", "c1ccccc1C"], "top_k": 2}, "expected": [["c1ccccc1", 1.0], ["c1ccccc1C", 0.857]]}
+{"input": {"query_smiles": ["CCO"], "library_smiles": ["CCO"], "top_k": 1}, "expected": [["CCO", 1.0]]}

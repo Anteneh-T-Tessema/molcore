@@ -1,0 +1,2 @@
+{"input": {"smiles": "c1ccccc1"}, "expected": {"num_nodes": 6, "num_edges": 12, "node_feat_dim": 4, "edge_feat_dim": 4}}
+{"input": {"smiles": "CCO"}, "expected": {"num_nodes": 3, "num_edges": 4, "node_feat_dim": 4, "edge_feat_dim": 4}}

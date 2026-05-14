@@ -1,0 +1,38 @@
+# Tool Registry — single source of truth for tool discovery
+
+tools:
+  featurize:
+    type: local
+    path: tools/local/featurize.py
+    description: Batch ECFP4 fingerprints via Rust or RDKit backend
+    skill: fingerprint
+
+  similarity:
+    type: local
+    path: tools/local/similarity.py
+    description: Tanimoto pairwise matrix, Rust Rayon parallel
+    skill: similarity_search
+
+  screen:
+    type: local
+    path: tools/local/screen.py
+    description: Full virtual screening pipeline — fingerprint + Tanimoto + rank
+    skill: similarity_search
+
+  descriptors:
+    type: local
+    path: tools/local/descriptors.py
+    description: Batch MW / LogP / TPSA descriptors
+    skill: property_prediction
+
+  pubchem_mcp:
+    type: mcp
+    path: tools/mcp/pubchem_mcp.yaml
+    description: PubChem REST API — structure lookup, synonyms, properties
+    skill: agentic_rag
+
+  chembl_mcp:
+    type: mcp
+    path: tools/mcp/chembl_mcp.yaml
+    description: ChEMBL REST API — bioactivity data
+    skill: agentic_rag

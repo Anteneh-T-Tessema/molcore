@@ -1,0 +1,28 @@
+[build-system]
+requires      = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name        = "molcore"
+version     = "0.1.0"
+description = "AI-native cheminformatics: Rust core + RDKit bridge + Python AI API"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.26",
+    "rdkit>=2023.9",
+    "torch-geometric>=2.5",
+]
+
+[project.optional-dependencies]
+pretrained = ["molfeat>=0.9", "datamol>=0.12"]
+dev        = ["maturin", "pytest", "pytest-benchmark"]
+
+[tool.maturin]
+features         = ["extension-module"]
+python-source    = "."
+module-name      = "molcore._molcore"
+manifest-path    = "crates/molcore-core/Cargo.toml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python", "evals"]

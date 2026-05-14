@@ -1,0 +1,2 @@
+{"input": {"smiles": ["CCO"], "backend": "rdkit"}, "expected": {"mw_approx": 46.07, "logp_approx": -0.14}}
+{"input": {"smiles": ["c1ccccc1"], "backend": "rust"}, "expected_shape": [1, 3]}
