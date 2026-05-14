@@ -25,6 +25,27 @@ tools:
     description: Batch MW / LogP / TPSA descriptors
     skill: property_prediction
 
+  smarts:
+    type: local
+    path: tools/local/smarts.py
+    description: SMARTS substructure search and filter — match, count, invert
+    skill: similarity_search
+    modes: [filter, matches]
+
+  scaffold:
+    type: local
+    path: tools/local/scaffold.py
+    description: Murcko scaffold decomposition, scaffold-aware split, scaffold clustering
+    skill: similarity_search
+    modes: [scaffold, split, cluster]
+
+  conformer:
+    type: local
+    path: tools/local/conformer.py
+    description: 3D conformer generation (ETKDGv3 + MMFF) and shape descriptors
+    skill: property_prediction
+    modes: [descriptors_3d, coordinates, batch_descriptors]
+
   pubchem_mcp:
     type: mcp
     path: tools/mcp/pubchem_mcp.yaml
@@ -34,5 +55,5 @@ tools:
   chembl_mcp:
     type: mcp
     path: tools/mcp/chembl_mcp.yaml
-    description: ChEMBL REST API — bioactivity data
+    description: ChEMBL REST API — bioactivity data, target info, assay results
     skill: agentic_rag

@@ -1,2 +1,5 @@
 {"input": {"smiles": ["CCO"], "backend": "rdkit"}, "expected": {"mw_approx": 46.07, "logp_approx": -0.14}}
 {"input": {"smiles": ["c1ccccc1"], "backend": "rust"}, "expected_shape": [1, 3]}
+{"input": {"smiles": ["CC(=O)Oc1ccccc1C(=O)O"], "backend": "rdkit"}, "expected": {"mw_range": [175, 185], "comment": "aspirin ~180 g/mol"}}
+{"input": {"smiles": "c1ccccc1", "mode": "3d"}, "expected": {"keys_include": ["pmi1", "pmi2", "pmi3", "asphericity"], "asphericity_positive": true}}
+{"input": {"smiles": ["CCO", "CC(=O)O", "c1ccccc1C(=O)O"], "backend": "rdkit", "filter": "ro5"}, "expected": {"all_pass": true}}

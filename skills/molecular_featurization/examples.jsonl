@@ -1,2 +1,6 @@
-{"input": {"smiles": "c1ccccc1"}, "expected": {"num_nodes": 6, "num_edges": 12, "node_feat_dim": 4, "edge_feat_dim": 4}}
-{"input": {"smiles": "CCO"}, "expected": {"num_nodes": 3, "num_edges": 4, "node_feat_dim": 4, "edge_feat_dim": 4}}
+{"input": {"smiles": "c1ccccc1", "hetero": false}, "expected": {"num_nodes": 6, "num_edges": 12, "node_feat_dim": 9, "edge_feat_dim": 4}}
+{"input": {"smiles": "CCO", "hetero": false}, "expected": {"num_nodes": 3, "num_edges": 4, "node_feat_dim": 9, "degree_col": [1.0, 2.0, 1.0]}}
+{"input": {"smiles": "c1ccccc1C(=O)O", "hetero": false}, "expected": {"x_shape": [9, 9], "ring_atoms": 6, "comment": "benzoic acid: 6 ring atoms"}}
+{"input": {"smiles": "c1ccncc1", "hetero": true}, "expected": {"node_types_include": ["C", "N"], "n_carbons": 5, "n_nitrogens": 1}}
+{"input": {"smiles": "N[C@H](C)C(=O)O", "hetero": false}, "expected": {"chirality_atom1": 1.0, "comment": "L-alanine: [C@H] chirality=1"}}
+{"input": {"smiles": "C#C", "hetero": false}, "expected": {"hybridization_all": 1.0, "comment": "acetylene sp"}}

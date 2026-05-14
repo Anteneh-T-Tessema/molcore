@@ -1,2 +1,4 @@
 {"input": {"query_smiles": ["c1ccccc1"], "library_smiles": ["c1ccccc1", "CCO", "c1ccccc1C"], "top_k": 2}, "expected": [["c1ccccc1", 1.0], ["c1ccccc1C", 0.857]]}
 {"input": {"query_smiles": ["CCO"], "library_smiles": ["CCO"], "top_k": 1}, "expected": [["CCO", 1.0]]}
+{"input": {"mode": "smarts_filter", "smiles": ["CCO", "CC(=O)O", "c1ccccc1C(=O)O", "CCCC"], "smarts": "C(=O)O"}, "expected": {"hits": ["CC(=O)O", "c1ccccc1C(=O)O"]}}
+{"input": {"mode": "scaffold_split", "smiles": ["Cc1ccccc1", "Clc1ccccc1", "CCCO", "CCCCO"], "train_frac": 0.5, "val_frac": 0.25}, "expected": {"total_count": 4, "no_scaffold_overlap": true}}
