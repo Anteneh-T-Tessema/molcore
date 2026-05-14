@@ -3,9 +3,9 @@ use pyo3::prelude::*;
 pub mod molecule;
 pub mod ingest;
 pub mod fingerprints;
-mod graph_arrays;
-mod similarity;
-mod descriptors;
+pub mod graph_arrays;
+pub mod similarity;
+pub mod descriptors;
 
 pub use molecule::PyMolGraph;
 

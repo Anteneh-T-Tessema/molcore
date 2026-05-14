@@ -238,7 +238,21 @@ fn bond_order(bt: BondType) -> f32 {
     }
 }
 
+/// rdkit-backend: to enable, add rdkit-sys + rdkit crates as deps in molcore-core/Cargo.toml
+/// and set RDKIT_CONDA (or RDKIT_DIR) to the RDKit prefix in your build environment.
+/// In CI, download the pre-built ubuntu binaries and set the env var accordingly.
+/// The feature flag `rdkit-backend` in molcore-core/Cargo.toml controls this path.
 #[cfg(feature = "rdkit-backend")]
 fn ingest_rdkit(_smiles: &str) -> Result<PyMolGraph, IngestionError> {
-    todo!("rdkit-backend: wire rdkit-rs once linked in CI")
+    // Wire-up checklist (do not remove):
+    //   1. Add to molcore-core/Cargo.toml: rdkit-sys = { workspace = true, optional = true }
+    //   2. Update rdkit-backend feature: rdkit-backend = ["dep:rdkit-sys"]
+    //   3. Call rdkit_sys::RWMol::from_smiles(smiles) and extract atoms/bonds
+    //   4. Convert to Atom/Bond structs and lock into petgraph StableGraph
+    //   5. Enable in CI: install rdkit, set RDKIT_CONDA=... and run:
+    //        cargo test -p molcore-core --features rdkit-backend
+    compile_error!(
+        "rdkit-backend feature requires rdkit-sys dep in molcore-core/Cargo.toml. \
+         See ingest.rs wire-up checklist above."
+    );
 }

@@ -5,6 +5,7 @@ resolver = "2"
 [workspace.dependencies]
 rdkit-sys = "0.4"
 rdkit     = "0.4"
+purr      = "0.9"
 pyo3      = { version = "0.22", features = ["extension-module"] }
 numpy     = "0.22"
 rayon     = "1.10"
@@ -12,6 +13,9 @@ petgraph  = { version = "0.6", features = ["serde-1"] }
 ndarray   = { version = "0.16", features = ["rayon"] }
 serde     = { version = "1", features = ["derive"] }
 thiserror = "1"
+arrow     = { version = "53", default-features = false, features = ["ipc"] }
+parquet   = { version = "53", default-features = false, features = ["arrow", "snap"] }
+bytes     = "1"
 
 [profile.release]
 opt-level = 3
