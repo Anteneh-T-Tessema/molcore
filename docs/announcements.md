@@ -1,91 +1,108 @@
-# Launch announcements
+# Launch announcements — v0.2.0
 
-Ready-to-post text for each channel. Edit the Colab URL once the notebook is on main.
+Ready-to-post text for each channel.
 
 ---
 
 ## RDKit mailing list (rdkit-discuss@lists.sourceforge.net)
 
-**Subject:** molcore: Rust-accelerated cheminformatics with native PyG integration
+**Subject:** molcore v0.2: Rust-accelerated cheminformatics — clustering, MMPA, diversity picking, GAT/GIN, Optuna tuning
 
 Hi all,
 
-I wanted to share a library I've been building: **molcore**, an open-source cheminformatics toolkit that wraps RDKit where it matters and accelerates the hot paths in Rust.
+I wanted to share **molcore v0.2**, an open-source cheminformatics toolkit that wraps RDKit where it matters and accelerates the hot paths in Rust.
 
 The core idea: molecules as batch-first, zero-copy tensors that flow directly into PyTorch Geometric — no Python loops, no intermediate copies.
 
-**What it does:**
+**Performance** (Apple M-series, CPU, 10k molecules):
 
-- ECFP4 fingerprints via Rust Rayon: **132× faster** than RDKit at 10k molecules
-- Tanimoto matrix: **29× faster** at scale via u64 `count_ones()`
+- ECFP4 fingerprints via Rust Rayon: **132× faster** than RDKit
+- Tanimoto matrix: **29× faster** via u64 `count_ones()`
 - PyG `Data` export: **4.3× faster** than manual Python feature extraction
-- GCN property predictor: **RMSE = 0.937** on ESOL solubility (1,128 molecules, 3-layer GCN, 300 epochs)
-- SDF/gzip I/O, Parquet storage, pandas DataFrame bridge
-- Full descriptor set (all ~200 RDKit descriptors, with `lipinski`/`druglike`/`all` presets)
-- MACCS keys, atom pairs, topological torsions, RDKit path fingerprints
-- 2D depiction with Jupyter `_repr_svg_` auto-render
-- Standardization, MCS, R-group decomposition
-- Scaffold split, SMARTS filter, reaction SMARTS
+
+**What's new in v0.2:**
+
+- **Butina clustering** (`butina_cluster`, `MolDataset.cluster`): Tanimoto-distance clustering, adds `cluster_id` metadata column
+- **k-fold and scaffold k-fold CV** (`MolDataset.kfold`, `MolDataset.scaffold_kfold`): no scaffold leaks between folds
+- **MMPA — single-cut fragmentation** (`mmpa`): matched molecular pairs with `core`, `smiles_a/b`, and `transform` SMARTS
+- **MaxMin diversity picking** (`diversity_pick`): O(n × N) iterative Tanimoto-space selection, scales to ~500k
+- **GAT and GIN architectures** (`PropertyPredictor(model_type="gat"|"gin"|"gcn")`): unified `_MolGNN` module, backward-compatible checkpoints
+- **Optuna HP search** (`PropertyPredictor.tune`): searches hidden dim, layers, dropout, lr, batch size, and architecture; requires `pip install molcore[optuna]`
+
+**ESOL benchmark** (Delaney 2004, 1128 molecules, scaffold split):
+
+| Configuration | RMSE | R² |
+| --- | --- | --- |
+| GCN, hidden=64, 3 layers, 300 epochs | 1.038 | 0.727 |
+| Optuna-tuned (30 trials): hidden=128, 4 layers | 1.090 | 0.709 |
+
+Note: scaffold split is substantially harder than the random split used in published MoleculeNet baselines (RMSE ≈ 0.58) — results are not directly comparable.
 
 **Install:**
 
 ```bash
-pip install molcore
+pip install molcore          # core
+pip install molcore[optuna]  # + Optuna tuning
+pip install molcore[all]     # everything
 ```
-
-No conda. RDKit installs automatically as a declared dependency.
 
 **Quickstart notebook (Colab):**
 [colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
 
-**Migration guide** (RDKit → molcore API mapping):
+**Migration guide** (RDKit → molcore):
 [github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md](https://github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md)
 
-The design keeps RDKit as the chemistry authority — all RDKit calls are isolated in a single `rdkit_bridge.py` file. The Rust core handles the batch hot paths; RDKit handles everything that requires its full chemical intelligence.
+The design keeps RDKit as the chemistry authority — all RDKit calls are isolated in a single `rdkit_bridge.py`. The Rust core handles batch hot paths; RDKit handles everything requiring its full chemical intelligence.
 
-Happy to answer questions. Source: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
+457 tests passing (17 Rust + 440 Python). Happy to answer questions.
+
+Source: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
 
 ---
 
 ## Reddit r/cheminformatics
 
-**Title:** molcore: RDKit-compatible cheminformatics toolkit with 35–132× faster fingerprints and native PyG integration
+**Title:** molcore v0.2: RDKit-compatible cheminformatics — clustering, MMPA, diversity picking, GAT/GIN, Optuna (132× faster fingerprints)
 
 ---
 
-If you work at the intersection of cheminformatics and ML, you've probably written the same glue code a dozen times: RDKit fingerprint loop → numpy stack → torch.from_numpy → PyG DataLoader. molcore eliminates that.
+v0.2 of molcore is out. If you work at the intersection of cheminformatics and ML, this eliminates the usual glue code: RDKit fingerprint loop → numpy stack → torch.from_numpy → PyG DataLoader.
 
-**What it is:** an open-source Python library with a Rust performance core, RDKit compatibility, and native PyTorch Geometric integration.
-
-**The numbers** (Apple M-series, CPU, 10k molecules):
+**Performance** (Apple M-series, CPU, 10k molecules):
 
 | | molcore | RDKit | Speedup |
 | --- | --- | --- | --- |
 | ECFP4 fingerprints | 2.0M mol/s | 15k mol/s | **132×** |
 | Tanimoto 500×10k | 224M pairs/s | 7.7M pairs/s | **29×** |
-| PyG conversion | 3.3 ms/200 mols | 14.4 ms | **4.3×** |
-| ESOL RMSE (GCN, 300 ep) | 0.937 | — | — |
+| PyG conversion (200 mols) | 3.3 ms | 14.4 ms | **4.3×** |
 
-These are measured on Apple M-series. Linux x86_64 numbers are similar or faster — Rust's `u64::count_ones()` compiles to a single `POPCNT` instruction on x86_64 with SSE4.2, and Rayon's thread pool scales with core count. molcore is not Mac-only.
+**New in v0.2:**
 
-**Install:** `pip install molcore` — no conda, RDKit installs automatically.
+- **Butina clustering** — Tanimoto-distance, adds `cluster_id` metadata column
+- **k-fold / scaffold k-fold CV** — no scaffold leaks between folds
+- **MMPA** — single-cut matched molecular pairs with transform SMARTS
+- **MaxMin diversity picking** — scales to ~500k molecules
+- **GAT and GIN architectures** — drop-in alongside GCN, backward-compatible checkpoints
+- **Optuna HP search** — auto-tunes architecture + training HPs over n_trials trials
 
-**Key features:**
+**ESOL benchmark** (scaffold split, 1128 molecules):
 
-- SDF/gzip I/O and Parquet storage
-- Full descriptor set: all ~200 RDKit descriptors with `lipinski`/`druglike`/`all` presets
-- `MolDataset.from_sdf()`, `.scaffold_split()`, `.to_dataframe()`, `.draw_grid()`
-- `pandas_tools` module: `load_sdf`, `add_descriptors`, `add_fingerprints`, `filter_by_smarts`
-- Mol objects auto-render in Jupyter via `_repr_svg_`
-- GCN predictor with MC Dropout uncertainty (`predict_with_uncertainty`)
-- Standardization, MCS, R-group decomposition
-- Everything else (conformers, reactions, descriptors) delegates to RDKit
+| | RMSE | R² |
+| --- | --- | --- |
+| GCN untuned | 1.038 | 0.727 |
+| Optuna-tuned (30 trials) | 1.090 | 0.709 |
+
+Scaffold split is substantially harder than the random split used in published MoleculeNet baselines (RMSE ≈ 0.58) — not directly comparable.
+
+**Install:**
+
+```bash
+pip install molcore           # no conda needed, RDKit installs automatically
+pip install molcore[optuna]   # + Optuna tuning
+```
 
 **Quickstart in Colab:**
-[colab.research.google.com/.../quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
-
-**Migration guide:**
-[github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md](https://github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md)
+[colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
 
 GitHub: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
 
@@ -93,15 +110,11 @@ GitHub: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tess
 
 ## PyG GitHub Discussions / torch-geometric community
 
-**Title:** molcore — zero-copy RDKit → PyG pipeline, 4.3× faster graph construction
+**Title:** molcore v0.2 — zero-copy RDKit → PyG pipeline, GAT/GIN/GCN predictor, Optuna tuning, Butina clustering
 
 ---
 
-If you're building GNNs on molecular graphs, molcore might save you a lot of boilerplate.
-
-The current workflow for most people looks like this: parse SMILES with RDKit, manually loop over atoms/bonds to build feature tensors, call `torch.tensor()` per molecule, assemble a `Data` object. It works, but it's slow and fragile.
-
-molcore does this via a Rust/PyO3 bridge with `IntoPyArray` → `torch.from_numpy()` — no Python-side loops, zero copies:
+v0.2 of molcore is out. If you're building GNNs on molecular graphs, it eliminates the Python-loop graph construction boilerplate with a Rust/PyO3 zero-copy bridge:
 
 ```python
 from molcore.molecule import Mol
@@ -110,31 +123,63 @@ from torch_geometric.loader import DataLoader
 
 mol = Mol.from_smiles("CC(=O)Oc1ccccc1C(=O)O")
 data = mol.to_pyg()
-# data.x          → (N, 9) float32 — 9 node features including hybridization, chirality
+# data.x          → (N, 9) float32  — 9 node features incl. hybridization, chirality
 # data.edge_index → (2, E) int64 COO bidirectional
 # data.edge_attr  → (E, 4) float32 bond one-hot
 
-# Full dataset → DataLoader in 3 lines
 ds = MolDataset.from_sdf("library.sdf")
 ds.labels = logp_array
 loader = DataLoader(MolTorchDataset(ds), batch_size=32, shuffle=True)
 ```
 
-The graph construction is **4.3× faster** than manual Python atom-loop construction at 200 molecules/batch.
+Graph construction is **4.3× faster** than a manual Python atom loop at 200 mol/batch.
 
-There's also a bundled GCN predictor with MC Dropout uncertainty and a validated ESOL benchmark (RMSE = 0.937, 1,128 molecules, 3-layer GCN):
+**New in v0.2 — GNN side:**
 
 ```python
 from molcore.predictor import PropertyPredictor
 
-pred = PropertyPredictor(hidden=128, epochs=300)
+# GAT or GIN, drop-in alongside GCN
+pred = PropertyPredictor(model_type="gat", hidden=128, epochs=300)
 pred.fit(train_ds, val_dataset=val_ds)
-means, stds = pred.predict_with_uncertainty(smiles, n_samples=30)
+
+# Optuna HP search — finds arch + training HPs automatically
+best = PropertyPredictor.tune(train_ds, val_ds, n_trials=30)
+
+# Uncertainty quantification
+means, stds = best.predict_with_uncertainty(smiles, n_samples=30)
 ```
 
-**Install:** `pip install molcore`
+**New in v0.2 — cheminformatics side:**
+
+```python
+from molcore.io import MolDataset
+from molcore.analysis import mmpa, diversity_pick
+
+# Scaffold k-fold CV (no leakage)
+for train, val in ds.scaffold_kfold(k=5):
+    ...
+
+# Butina clustering
+ds_clustered = ds.cluster(cutoff=0.4)  # adds cluster_id metadata
+
+# MaxMin diversity picking (scales to ~500k)
+indices = diversity_pick(ds, n=500)
+
+# Matched molecular pairs
+pairs = mmpa(ds)  # [{"core": ..., "smiles_a": ..., "transform": ...}, ...]
+```
+
+**ESOL benchmark** (scaffold split, 1128 molecules):
+
+| | RMSE | R² |
+| --- | --- | --- |
+| GCN, hidden=64, 3 layers | 1.038 | 0.727 |
+| Optuna-tuned GAT/GIN/GCN (30 trials) | 1.090 | 0.709 |
+
+**Install:** `pip install molcore` or `pip install molcore[optuna]`
 
 **Colab quickstart:**
-[colab.research.google.com/.../quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
+[colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
 
 GitHub: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
