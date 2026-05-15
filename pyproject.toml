@@ -36,6 +36,7 @@ features         = ["extension-module"]
 python-source    = "."
 module-name      = "molcore._molcore"
 manifest-path    = "crates/molcore-core/Cargo.toml"
+include          = [{ path = "LICENSE", format = "sdist" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python", "evals"]
