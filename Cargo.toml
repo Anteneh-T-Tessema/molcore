@@ -14,7 +14,7 @@ ndarray   = { version = "0.16", features = ["rayon"] }
 serde     = { version = "1", features = ["derive"] }
 thiserror = "1"
 arrow     = { version = "53", default-features = false, features = ["ipc"] }
-parquet   = { version = "53", default-features = false, features = ["arrow", "snap"] }
+parquet   = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes     = "1"
 
 [profile.release]
