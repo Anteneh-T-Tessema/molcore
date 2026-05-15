@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 pandas     = ["pandas>=2.0"]
 optuna     = ["optuna>=3.0"]
-pretrained = ["molfeat>=0.9", "datamol>=0.12"]
+pretrained = ["molfeat>=0.9", "datamol>=0.12.5"]
 bio        = [
     "transformers>=4.30",      # ESM-2 protein language model
     "sentencepiece>=0.1.99",   # ESM tokenizer dependency
