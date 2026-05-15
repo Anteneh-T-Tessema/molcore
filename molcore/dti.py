@@ -472,17 +472,6 @@ class DTIPredictor:
                 pass
         return graphs, prot_ts, valid_local
 
-    def _build_batches(self, smiles, sequences):
-        """Yield (mol_batch, prot_tensor, valid_local_indices) for predict()."""
-        from torch_geometric.data import Batch
-        for start in range(0, len(smiles), self.batch_size):
-            smi_b = smiles[start:start + self.batch_size]
-            seq_b = sequences[start:start + self.batch_size]
-            graphs, prot_ts, valid_local = self._parse_batch(smi_b, seq_b)
-            if not graphs:
-                continue
-            yield Batch.from_data_list(graphs), _pad_proteins(prot_ts), valid_local
-
     def _run_epoch(
         self,
         dataset: DTIDataset,

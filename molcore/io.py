@@ -2,7 +2,7 @@
 molcore.io — Parquet/Arrow I/O for molecular datasets.
 
 Columnar storage: SMILES strings + pre-computed fingerprints + descriptors.
-Uses pyarrow (available transitively through torch) — no extra install needed.
+Uses pyarrow (declared as a core dependency in pyproject.toml).
 
 Usage:
     from molcore.io import write_parquet, read_parquet, MolDataset
