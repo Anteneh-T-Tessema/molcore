@@ -4,8 +4,10 @@ build-backend = "maturin"
 
 [project]
 name        = "molcore-chem"
-version     = "0.4.0"
+version     = "0.4.1"
 description = "AI-native cheminformatics: Rust core + RDKit bridge + Python AI API"
+readme      = "README.md"
+license     = { file = "LICENSE" }
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.2",
@@ -26,7 +28,7 @@ bio        = [
     "pandas>=2.0",             # TDC returns DataFrames
 ]
 dev        = ["maturin", "pytest", "pytest-benchmark", "pandas>=2.0", "nbformat>=5.0", "optuna>=3.0"]
-all        = ["molcore[pandas,optuna,pretrained,bio]"]
+all        = ["molcore-chem[pandas,optuna,pretrained,bio]"]
 
 [project.scripts]
 molcore = "molcore.cli:main"
@@ -36,7 +38,10 @@ features         = ["extension-module"]
 python-source    = "."
 module-name      = "molcore._molcore"
 manifest-path    = "crates/molcore-core/Cargo.toml"
-include          = [{ path = "LICENSE", format = "sdist" }]
+include          = [
+    { path = "LICENSE",   format = "sdist" },
+    { path = "README.md", format = "sdist" },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python", "evals"]

@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ```bash
-pip install molcore    # Rust compiled into the wheel — no conda required
+pip install molcore-chem  # Rust compiled into the wheel — no conda required
 ```
 
 ---
@@ -206,7 +206,7 @@ pred2 = PropertyPredictor.load("logp_model.pt")
 ## Installation
 
 ```bash
-pip install molcore
+pip install molcore-chem
 ```
 
 Requires Python 3.11+. RDKit and PyTorch are declared dependencies — no manual conda setup.
@@ -214,7 +214,7 @@ Requires Python 3.11+. RDKit and PyTorch are declared dependencies — no manual
 For GPU:
 
 ```bash
-pip install molcore
+pip install molcore-chem
 pip install torch --index-url https://download.pytorch.org/whl/cu121   # CUDA 12.1
 ```
 

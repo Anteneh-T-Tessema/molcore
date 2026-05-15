@@ -6,6 +6,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.1] — 2026-05-15
+
+- Add README and LICENSE to PyPI package description
+- Restore macOS (arm64/x86_64) and Windows wheel builds
+- Fix `pip install molcore-chem[all]` extras reference
+- Fix optional `observability` import in `pipeline.py`
+
+---
+
 ## [0.4.0] — 2026-05-15
 
 - **MMPA double-cut** (`mmpa(smiles, max_cut_bonds=2)`):
