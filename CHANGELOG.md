@@ -6,6 +6,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — v0.2.0
+
+### Added
+
+- **Butina clustering** (`butina_cluster`, `MolDataset.cluster`): Tanimoto-distance
+  clustering via RDKit's Butina algorithm. `cluster(cutoff=0.4)` adds a `cluster_id`
+  metadata column; cluster 0 is always the largest cluster. Invalid SMILES get ID -1.
+- **k-fold cross-validation** (`MolDataset.kfold`, `MolDataset.scaffold_kfold`):
+  `kfold(k=5)` produces random splits; `scaffold_kfold(k=5)` assigns whole Murcko
+  scaffold groups to folds so no scaffold leaks between train and val.
+- **Optuna hyperparameter search** (`PropertyPredictor.tune`): searches hidden dim,
+  n_layers, dropout, lr, batch_size over n_trials Optuna trials; restores the
+  best-seen model weights. Requires `pip install molcore[optuna]`.
+- `optuna` optional dependency group in `pyproject.toml`; added to `[all]`.
+
+### Fixed (reliability)
+
+- `tanimoto_matrix`: raises `ValueError` when query/library have different nbits
+  instead of silently computing wrong scores via zip truncation.
+- `MolDataset.scaffold_split`: duplicate SMILES no longer silently drop — uses a
+  per-SMILES deque so every occurrence is assigned to exactly one split.
+- Parquet multi-label roundtrip: `read_parquet` now recovers `label_0`…`label_k`
+  columns written by multi-label `write_parquet`.
+- `neutralize`/`strip_salts`: use the module-level `_std_objects()` cache instead of
+  constructing fresh standardizer objects on every call.
+- RDKit firewall: `io.py` had a bare `from rdkit import Chem` violating the invariant
+  that all rdkit imports are isolated in `rdkit_bridge.py`; replaced by new
+  `rdkit_bridge.mol_to_smiles(rdmol)` helper.
+- `write_sdf`: validates that all `properties` value lists have the same length as
+  `smiles_list` upfront, raising `ValueError` instead of crashing mid-write.
+
+---
+
 ## [0.1.0] — 2026-05-14
 
 Initial public release.

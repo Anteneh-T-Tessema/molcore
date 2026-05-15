@@ -502,6 +502,109 @@ class MolDataset:
         return mols_to_grid_svg(subset, mols_per_row=mols_per_row,
                                  sub_img_size=sub_img_size, legends=legends)
 
+    # -------------------------------------------------------------------------
+    # Cross-validation splits
+    # -------------------------------------------------------------------------
+
+    def kfold(
+        self,
+        k: int = 5,
+        seed: int = 42,
+    ) -> "list[tuple[MolDataset, MolDataset]]":
+        """
+        Random k-fold cross-validation split.
+
+        Returns k (train, val) MolDataset pairs. Each molecule appears in
+        exactly one validation fold and k-1 training folds.
+        """
+        import random as _random
+        n = len(self)
+        if k < 2:
+            raise ValueError(f"k must be ≥ 2, got {k}")
+        if n < k:
+            raise ValueError(f"Dataset has {n} molecules but k={k}; need at least k molecules")
+        idx = list(range(n))
+        _random.Random(seed).shuffle(idx)
+        folds = [idx[i::k] for i in range(k)]
+        result = []
+        for fold_i in range(k):
+            val_idx = folds[fold_i]
+            train_idx = [i for j, fold in enumerate(folds) for i in fold if j != fold_i]
+            result.append((self._subset(train_idx), self._subset(val_idx)))
+        return result
+
+    def scaffold_kfold(
+        self,
+        k: int = 5,
+        seed: int = 42,
+    ) -> "list[tuple[MolDataset, MolDataset]]":
+        """
+        Scaffold-aware k-fold cross-validation.
+
+        Whole Murcko scaffold groups are assigned to folds, so no scaffold
+        appears in both train and val within any fold.
+        Returns k (train, val) MolDataset pairs.
+        """
+        from molcore.rdkit_bridge import murcko_scaffold
+        from collections import defaultdict
+        import random as _random
+
+        if k < 2:
+            raise ValueError(f"k must be ≥ 2, got {k}")
+
+        scaffold_groups: dict[str, list[int]] = defaultdict(list)
+        for i, smi in enumerate(self.smiles):
+            try:
+                sc = murcko_scaffold(smi)
+            except Exception:
+                sc = smi
+            scaffold_groups[sc].append(i)
+
+        groups = list(scaffold_groups.values())
+        _random.Random(seed).shuffle(groups)
+
+        folds: list[list[int]] = [[] for _ in range(k)]
+        for g_i, group in enumerate(groups):
+            folds[g_i % k].extend(group)
+
+        result = []
+        for fold_i in range(k):
+            val_idx = folds[fold_i]
+            train_idx = [i for j, fold in enumerate(folds) for i in fold if j != fold_i]
+            result.append((self._subset(train_idx), self._subset(val_idx)))
+        return result
+
+    # -------------------------------------------------------------------------
+    # Clustering
+    # -------------------------------------------------------------------------
+
+    def cluster(
+        self,
+        cutoff: float = 0.4,
+        nbits: int = 2048,
+        radius: int = 2,
+    ) -> "MolDataset":
+        """
+        Cluster molecules using the Butina algorithm and store cluster IDs in metadata.
+
+        cutoff: Tanimoto distance threshold (1 - similarity). Default 0.4
+                → molecules with similarity ≥ 0.6 end up in the same cluster.
+
+        Returns a new MolDataset (original unchanged) with a 'cluster_id'
+        metadata column added. Cluster 0 is the largest cluster.
+        """
+        from molcore.rdkit_bridge import butina_cluster
+        ids = butina_cluster(self.smiles, cutoff=cutoff, nbits=nbits, radius=radius)
+        new_meta = dict(self.metadata)
+        new_meta["cluster_id"] = ids
+        return MolDataset(
+            smiles       = self.smiles,
+            fingerprints = self.fingerprints,
+            descriptors  = self.descriptors,
+            labels       = self.labels,
+            metadata     = new_meta,
+        )
+
     def _repr_html_(self) -> str:
         """Jupyter HTML: summary + 8-molecule grid."""
         from molcore.rdkit_bridge import mols_to_grid_svg

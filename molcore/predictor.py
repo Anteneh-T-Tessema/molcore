@@ -358,6 +358,88 @@ class PropertyPredictor:
         return {"r2": r2, "mae": mae, "rmse": rmse, "n": int(mask.sum())}
 
     # ------------------------------------------------------------------
+    # Hyperparameter search
+    # ------------------------------------------------------------------
+
+    def tune(
+        self,
+        dataset,
+        val_dataset,
+        n_trials: int = 30,
+        timeout: "float | None" = None,
+        verbose: bool = False,
+    ) -> "PropertyPredictor":
+        """
+        Optuna hyperparameter search over hidden, n_layers, dropout, lr, batch_size.
+
+        Runs `n_trials` trials (or stops after `timeout` seconds), each training
+        a fresh model with candidate hyperparameters. The best configuration is
+        applied to self and the best model weights are restored.
+
+        Requires: pip install optuna
+
+        Args:
+            dataset     : labelled MolDataset for training
+            val_dataset : labelled MolDataset for validation (used as Optuna objective)
+            n_trials    : number of Optuna trials (default 30)
+            timeout     : wall-clock limit in seconds (default None = unlimited)
+            verbose     : if False, suppresses Optuna's per-trial output (default False)
+        Returns self for chaining.
+        """
+        try:
+            import optuna
+        except ImportError:
+            raise ImportError(
+                "optuna is required for tune(). Install it with: pip install optuna"
+            )
+
+        if not verbose:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        _best: dict = {"val_rmse": float("inf"), "state": None, "hparams": {}}
+
+        def _objective(trial: "optuna.Trial") -> float:
+            hp = {
+                "hidden":      trial.suggest_categorical("hidden", [32, 64, 128, 256]),
+                "n_layers":    trial.suggest_int("n_layers", 2, 4),
+                "dropout":     trial.suggest_float("dropout", 0.0, 0.3),
+                "lr":          trial.suggest_float("lr", 1e-4, 1e-2, log=True),
+                "batch_size":  trial.suggest_categorical("batch_size", [16, 32, 64]),
+            }
+            candidate = PropertyPredictor(
+                hidden=hp["hidden"], n_layers=hp["n_layers"], dropout=hp["dropout"],
+                lr=hp["lr"], batch_size=hp["batch_size"],
+                epochs=self.epochs, device=self.device, n_outputs=self.n_outputs,
+            )
+            candidate.fit(dataset, val_dataset=val_dataset, verbose=False)
+            metrics = candidate.score(val_dataset)
+            val_rmse = metrics["rmse"]
+            if val_rmse < _best["val_rmse"]:
+                _best["val_rmse"] = val_rmse
+                _best["state"] = {k: v.clone() for k, v in candidate._model.state_dict().items()}
+                _best["hparams"] = hp
+            return val_rmse
+
+        study = optuna.create_study(direction="minimize")
+        study.optimize(_objective, n_trials=n_trials, timeout=timeout)
+
+        hp = _best["hparams"]
+        self.hidden     = hp["hidden"]
+        self.n_layers   = hp["n_layers"]
+        self.dropout    = hp["dropout"]
+        self.lr         = hp["lr"]
+        self.batch_size = hp["batch_size"]
+
+        self._model = _MolGCN(
+            in_features=9, hidden=self.hidden, n_layers=self.n_layers,
+            dropout=self.dropout, n_outputs=self.n_outputs,
+        )
+        self._model.load_state_dict(_best["state"])
+        self._model.eval()
+
+        return self
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

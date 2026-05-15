@@ -574,6 +574,58 @@ def standardize(smiles: str) -> str:
 # Maximum Common Substructure
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Butina clustering
+# ---------------------------------------------------------------------------
+
+def butina_cluster(
+    smiles_list: list[str],
+    cutoff: float = 0.4,
+    nbits: int = 2048,
+    radius: int = 2,
+) -> list[int]:
+    """
+    Cluster molecules using the Butina algorithm on Tanimoto distance.
+
+    cutoff: Tanimoto *distance* threshold (= 1 - similarity). Default 0.4
+            means molecules with similarity ≥ 0.6 end up in the same cluster.
+
+    Returns a list of integer cluster IDs (0-indexed), one per input SMILES.
+    Invalid SMILES receive cluster ID -1.
+    Cluster 0 is always the largest cluster.
+    """
+    from rdkit.ML.Cluster import Butina
+    from rdkit.Chem import DataStructs
+
+    fps, valid_idx = [], []
+    for i, smi in enumerate(smiles_list):
+        try:
+            mol = from_smiles(smi)
+            fps.append(AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=nbits))
+            valid_idx.append(i)
+        except ValueError:
+            pass
+
+    cluster_ids = [-1] * len(smiles_list)
+    n = len(fps)
+    if n == 0:
+        return cluster_ids
+
+    # Lower-triangle Tanimoto distance matrix required by Butina
+    dists: list[float] = []
+    for i in range(1, n):
+        sims = DataStructs.BulkTanimotoSimilarity(fps[i], fps[:i])
+        dists.extend(1.0 - s for s in sims)
+
+    clusters = Butina.ClusterData(dists, n, cutoff, isDistData=True)
+
+    for cluster_id, members in enumerate(clusters):
+        for pos in members:
+            cluster_ids[valid_idx[pos]] = cluster_id
+
+    return cluster_ids
+
+
 def find_mcs(
     smiles_list: list[str],
     timeout: int = 5,
