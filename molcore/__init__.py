@@ -1,4 +1,5 @@
 from molcore.molecule import Mol
+from molcore.dti import DTIDataset, DTIPredictor
 from molcore.pipeline import featurize_smiles
 from molcore.io import MolDataset, MolTorchDataset
 from molcore.predictor import PropertyPredictor
@@ -86,6 +87,9 @@ __all__ = [
     "mol_to_svg",
     "mol_to_png",
     "mols_to_grid_svg",
+    # DTI
+    "DTIDataset",
+    "DTIPredictor",
     # namespaces
     "databases",
     "gpu",
