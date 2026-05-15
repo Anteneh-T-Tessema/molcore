@@ -6,7 +6,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — v0.3.0
+## [Unreleased] — v0.4.0
+
+- **MMPA double-cut** (`mmpa(smiles, max_cut_bonds=2)`):
+  Finds Matched Molecular Pairs that differ by a linker fragment between two
+  constant terminal groups. Enables linker-replacement and bioisostere SAR
+  (e.g. `-CH₂OCH₂-` → `-CH₂SCH₂-`). Adjacent-bond pairs are skipped;
+  linker SMILES are canonicalized symmetrically (`:1`↔`:2` normalized).
+  `max_cut_bonds=3+` raises `ValueError`; single-cut behaviour unchanged.
+
+---
+
+## [0.3.0] — 2026-05-15
 
 ### Added
 

@@ -3,6 +3,9 @@ rdkit_bridge.py — ALL RDKit calls are isolated here.
 One file to update when RDKit changes an API.
 Never import rdkit anywhere else in the hot path.
 """
+import itertools
+import re
+
 import numpy as np
 import torch
 from rdkit import Chem
@@ -699,63 +702,31 @@ def butina_cluster(
 # Matched Molecular Pair Analysis (MMPA)
 # ---------------------------------------------------------------------------
 
-def mmpa(
-    smiles_list: list[str],
-    max_cut_bonds: int = 1,
-    radius: int = 3,
-) -> "list[dict]":
+# Matches any single acyclic bond, excluding bridgehead N/O/S in rings
+_ACYCLIC_SINGLE = Chem.MolFromSmarts(
+    "[!$([#7;X3;r])&!$([#8;X2;r])&!$([#16;X2;r])]-&!@[*]"
+)
+
+
+def _mmpa_normalize_attachment(smi: str) -> str:
+    """Normalize all atom map numbers in an end-fragment SMILES to :1."""
+    return re.sub(r":\d+\]", ":1]", smi)
+
+
+def _mmpa_canonical_linker(smi: str) -> str:
+    """Return the lex-min of a linker SMILES and its :1↔:2 swap.
+
+    Ensures the same linker produces the same string regardless of which
+    cut was labelled bond-1 vs bond-2.
     """
-    Find all Matched Molecular Pairs (MMPs) in a list of molecules.
+    alt = smi.replace(":1]", ":99x]").replace(":2]", ":1]").replace(":99x]", ":2]")
+    return min(smi, alt)
 
-    A Matched Molecular Pair is a pair of molecules that differ by a single
-    structural transformation at one attachment point (single-cut MMPA).
 
-    Algorithm:
-      1. Fragment each molecule at every single non-ring bond (RECAP-style single cut).
-      2. For each fragmentation (core, substituent), collect all molecules sharing
-         the same core — these form a pair group.
-      3. Within each pair group, emit (mol_A, mol_B, substituent_A, substituent_B)
-         for every pair.
-
-    Currently supports single-cut fragmentation only. Double-cut (max_cut_bonds=2),
-    which captures ring-opening and linker changes, is planned for v0.3.
-
-    Args:
-        smiles_list   : list of input SMILES (duplicates and invalids are skipped)
-        max_cut_bonds : maximum number of bonds to cut (currently only 1 is supported)
-        radius        : number of heavy atoms around the attachment point to include
-                        in the environment (context) SMARTS; 0 = no context
-
-    Returns list of dicts with keys:
-        mol_a       : SMILES of molecule A
-        mol_b       : SMILES of molecule B
-        smiles_a    : substituent on A (the part that changes)
-        smiles_b    : substituent on B (the part that changes)
-        core        : common core SMILES (the part that stays the same)
-        transform   : canonical transform string '[*:1]>>smiles_b'
-
-    Pairs are returned in canonical order (mol_a < mol_b alphabetically).
-    Invalid SMILES are silently skipped.
-    """
-    from rdkit.Chem import AllChem, BRICS
+def _mmpa_single_cut(valid_smiles: list[str]) -> "list[dict]":
     from collections import defaultdict
 
-    if max_cut_bonds != 1:
-        raise ValueError("max_cut_bonds > 1 is not yet supported")
-
-    # Fragment at single acyclic bonds only (one-cut BRICS-style)
-    ACYCLIC_SINGLE = Chem.MolFromSmarts("[!$([#7;X3;r])&!$([#8;X2;r])&!$([#16;X2;r])]-&!@[*]")
-
-    # core_to_mols: core_smiles → {orig_smiles → substituent_smiles}
     core_to_entries: dict[str, dict[str, str]] = defaultdict(dict)
-
-    valid_smiles = []
-    for smi in smiles_list:
-        try:
-            canon = Chem.MolToSmiles(from_smiles(smi))
-            valid_smiles.append(canon)
-        except ValueError:
-            pass
 
     for smi in valid_smiles:
         try:
@@ -763,7 +734,7 @@ def mmpa(
         except ValueError:
             continue
 
-        matches = mol.GetSubstructMatches(ACYCLIC_SINGLE)
+        matches = mol.GetSubstructMatches(_ACYCLIC_SINGLE)
         seen_cores: set[str] = set()
 
         for bond_match in matches:
@@ -772,7 +743,6 @@ def mmpa(
             if bond is None or bond.IsInRing():
                 continue
 
-            # Fragment: mark bond then split
             em = Chem.RWMol(mol)
             em.RemoveBond(bi, bj)
             em.GetAtomWithIdx(bi).SetAtomMapNum(1)
@@ -786,11 +756,9 @@ def mmpa(
             if len(frags) != 2:
                 continue
 
-            # Assign core (larger fragment) and substituent (smaller)
             frags.sort(key=lambda s: s.count("*") + len(s), reverse=True)
             core_smi, sub_smi = frags[0], frags[1]
 
-            # Canonicalize with attachment point as dummy atom
             try:
                 core_can = Chem.MolToSmiles(Chem.MolFromSmiles(core_smi))
                 sub_can  = Chem.MolToSmiles(Chem.MolFromSmiles(sub_smi))
@@ -804,13 +772,13 @@ def mmpa(
 
     pairs = []
     for core_smi, mol_to_sub in core_to_entries.items():
-        entries = sorted(mol_to_sub.items())  # deterministic order
+        entries = sorted(mol_to_sub.items())
         for i in range(len(entries)):
             for j in range(i + 1, len(entries)):
                 mol_a, sub_a = entries[i]
                 mol_b, sub_b = entries[j]
                 if sub_a == sub_b:
-                    continue  # identical substituent — not a pair
+                    continue
                 pairs.append({
                     "mol_a":     mol_a,
                     "mol_b":     mol_b,
@@ -819,8 +787,167 @@ def mmpa(
                     "core":      core_smi,
                     "transform": f"{sub_a}>>{sub_b}",
                 })
-
     return pairs
+
+
+def _mmpa_double_cut(valid_smiles: list[str]) -> "list[dict]":
+    """Double-cut MMPA: find pairs of molecules differing only in a linker fragment.
+
+    Algorithm:
+      1. For each molecule, enumerate all pairs of non-adjacent acyclic bonds.
+      2. Cut both bonds → expect exactly 3 fragments (two terminal ends + one linker).
+      3. The linker is the fragment that carries both cut-point markers.
+      4. Group molecules by frozenset({end1_canonical, end2_canonical}).
+      5. Within each group, emit pairs that differ in the linker.
+    """
+    from collections import defaultdict
+
+    # frozenset({end1_can, end2_can}) → {orig_smiles → linker_can}
+    core_to_entries: defaultdict = defaultdict(dict)
+
+    for smi in valid_smiles:
+        try:
+            mol = from_smiles(smi)
+        except ValueError:
+            continue
+
+        matches = mol.GetSubstructMatches(_ACYCLIC_SINGLE)
+        # Deduplicate bonds as canonical (min_idx, max_idx) pairs
+        bonds = list({(min(m[0], m[1]), max(m[0], m[1])) for m in matches})
+
+        seen_cores: set = set()
+
+        for (ai, aj), (bi, bj) in itertools.combinations(bonds, 2):
+            # Skip adjacent bonds (share an atom) — produce degenerate fragments
+            if len({ai, aj, bi, bj}) < 4:
+                continue
+
+            em = Chem.RWMol(mol)
+            try:
+                em.RemoveBond(ai, aj)
+                em.RemoveBond(bi, bj)
+            except Exception:
+                continue
+
+            # Label: first-cut atoms → :1, second-cut atoms → :2
+            em.GetAtomWithIdx(ai).SetAtomMapNum(1)
+            em.GetAtomWithIdx(aj).SetAtomMapNum(1)
+            em.GetAtomWithIdx(bi).SetAtomMapNum(2)
+            em.GetAtomWithIdx(bj).SetAtomMapNum(2)
+
+            try:
+                frags_smi = Chem.MolToSmiles(em.GetMol()).split(".")
+            except Exception:
+                continue
+
+            if len(frags_smi) != 3:
+                continue
+
+            # Linker = the fragment that carries both :1] and :2] markers
+            linker_idx = next(
+                (i for i, f in enumerate(frags_smi) if ":1]" in f and ":2]" in f),
+                None,
+            )
+            if linker_idx is None:
+                continue
+
+            end_idxs = [i for i in range(3) if i != linker_idx]
+            end1_raw   = frags_smi[end_idxs[0]]
+            end2_raw   = frags_smi[end_idxs[1]]
+            linker_raw = frags_smi[linker_idx]
+
+            try:
+                end1_can = Chem.MolToSmiles(
+                    Chem.MolFromSmiles(_mmpa_normalize_attachment(end1_raw))
+                )
+                end2_can = Chem.MolToSmiles(
+                    Chem.MolFromSmiles(_mmpa_normalize_attachment(end2_raw))
+                )
+                linker_can = _mmpa_canonical_linker(
+                    Chem.MolToSmiles(Chem.MolFromSmiles(linker_raw))
+                )
+            except Exception:
+                continue
+
+            core_key = frozenset({end1_can, end2_can})
+            if core_key in seen_cores:
+                continue
+            seen_cores.add(core_key)
+            core_to_entries[core_key][smi] = linker_can
+
+    pairs = []
+    for core_key, mol_to_linker in core_to_entries.items():
+        entries = sorted(mol_to_linker.items())
+        core_display = ".".join(sorted(core_key))
+        for i in range(len(entries)):
+            for j in range(i + 1, len(entries)):
+                mol_a, linker_a = entries[i]
+                mol_b, linker_b = entries[j]
+                if linker_a == linker_b:
+                    continue
+                pairs.append({
+                    "mol_a":     mol_a,
+                    "mol_b":     mol_b,
+                    "smiles_a":  linker_a,
+                    "smiles_b":  linker_b,
+                    "core":      core_display,
+                    "transform": f"{linker_a}>>{linker_b}",
+                })
+    return pairs
+
+
+def mmpa(
+    smiles_list: list[str],
+    max_cut_bonds: int = 1,
+    radius: int = 3,
+) -> "list[dict]":
+    """
+    Find all Matched Molecular Pairs (MMPs) in a list of molecules.
+
+    Single-cut (max_cut_bonds=1):
+      Molecules differing by one substituent at a single attachment point.
+      Core = large fragment; variable = small substituent fragment.
+
+    Double-cut (max_cut_bonds=2):
+      Molecules differing by a linker between two constant terminal fragments.
+      Core = the two terminal ends; variable = the linker between them.
+      Useful for bioisostere linker replacement and scaffold-hopping SAR.
+
+    Args:
+        smiles_list   : input SMILES (duplicates and invalids are silently skipped)
+        max_cut_bonds : 1 (single-cut, default) or 2 (double-cut)
+        radius        : unused in the current implementation; reserved for
+                        environment-context SMARTS in a future release
+
+    Returns list of dicts with keys:
+        mol_a, mol_b   : SMILES of the two paired molecules
+        smiles_a       : variable fragment from mol_a (substituent or linker)
+        smiles_b       : variable fragment from mol_b
+        core           : constant part SMILES
+        transform      : 'smiles_a>>smiles_b'
+
+    Pairs are emitted in canonical order (mol_a < mol_b lexicographically).
+    """
+    if max_cut_bonds not in (1, 2):
+        raise ValueError(
+            f"max_cut_bonds must be 1 or 2, got {max_cut_bonds}"
+        )
+
+    # Canonicalize and deduplicate
+    seen: set[str] = set()
+    valid: list[str] = []
+    for smi in smiles_list:
+        try:
+            canon = Chem.MolToSmiles(from_smiles(smi))
+        except ValueError:
+            continue
+        if canon not in seen:
+            seen.add(canon)
+            valid.append(canon)
+
+    if max_cut_bonds == 1:
+        return _mmpa_single_cut(valid)
+    return _mmpa_double_cut(valid)
 
 
 def find_mcs(
