@@ -20,7 +20,7 @@ class Mol:
     @classmethod
     def from_smiles(cls, smiles: str) -> "Mol":
         validate_smiles(smiles)
-        graph = PyMolGraph.from_smiles_rdkit(smiles)
+        graph = PyMolGraph.from_smiles(smiles)
         canonical = graph.canonical_smiles()
         return cls(_graph=graph, smiles=canonical)
 

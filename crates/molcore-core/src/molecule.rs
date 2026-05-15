@@ -45,10 +45,19 @@ pub struct PyMolGraph {
 #[pymethods]
 impl PyMolGraph {
     #[staticmethod]
-    pub fn from_smiles_rdkit(smiles: &str) -> PyResult<Self> {
+    pub fn from_smiles(smiles: &str) -> PyResult<Self> {
         crate::ingest::ingest(smiles).map_err(|e| {
             pyo3::exceptions::PyValueError::new_err(format!("MolIngestionError: {e}"))
         })
+    }
+
+    /// Backward-compatible alias for older Python code.
+    ///
+    /// The name is historical: Rust ingestion currently uses molcore's built-in
+    /// parser unless the unfinished `rdkit-backend` feature is completed.
+    #[staticmethod]
+    pub fn from_smiles_rdkit(smiles: &str) -> PyResult<Self> {
+        Self::from_smiles(smiles)
     }
 
     pub fn canonical_smiles(&self) -> &str {
