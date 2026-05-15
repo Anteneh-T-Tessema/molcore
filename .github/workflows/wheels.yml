@@ -90,8 +90,7 @@ jobs:
             python-version: "3.12"
 
     steps:
-      - uses: actions/checkout@v4
-
+      # No checkout — avoids local molcore/ directory shadowing the installed wheel
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -100,18 +99,16 @@ jobs:
         with:
           pattern: wheels-${{ matrix.os }}-*
           merge-multiple: true
-          path: dist
+          path: /tmp/dist
 
       - name: Install wheel + deps
-        shell: bash
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pyarrow pandas pytest
-          pip install --no-index --find-links dist molcore-chem
+          pip install numpy rdkit torch-geometric pyarrow pandas
+          pip install --no-index --find-links /tmp/dist molcore-chem
 
       - name: Smoke test
         run: |
-          cd /tmp
           python -c "
           import molcore
           from molcore.molecule import Mol
