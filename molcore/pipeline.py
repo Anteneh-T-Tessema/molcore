@@ -2,8 +2,16 @@
 pipeline.py — batch-first primary entry point.
 Always call this; per-mol methods are convenience wrappers around it.
 """
+import contextlib
+
 import torch
-from observability.metrics.skill_metrics import timed as _timed
+
+try:
+    from observability.metrics.skill_metrics import timed as _timed
+except ImportError:
+    @contextlib.contextmanager
+    def _timed(*args, **kwargs):
+        yield
 
 
 def featurize_smiles(
