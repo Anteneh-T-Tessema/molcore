@@ -84,6 +84,37 @@ def test_mmpa_unsupported_cut_bonds_raises():
 
 
 # ---------------------------------------------------------------------------
+# radius — environment context SMARTS
+# ---------------------------------------------------------------------------
+
+def test_mmpa_radius_zero_no_environment_key():
+    pairs = mmpa(SERIES, radius=0)
+    for p in pairs:
+        assert "environment" not in p
+
+
+def test_mmpa_radius_nonzero_adds_environment_key():
+    pairs = mmpa(SERIES, radius=2)
+    assert len(pairs) > 0
+    for p in pairs:
+        assert "environment" in p
+
+
+def test_mmpa_radius_environment_is_string():
+    pairs = mmpa(SERIES, radius=1)
+    for p in pairs:
+        assert isinstance(p["environment"], str)
+
+
+def test_mmpa_radius_default_backward_compatible():
+    # Default radius=3 but environment key only added when radius>0
+    # Default is 3 — so environment key IS present
+    pairs = mmpa(SERIES)
+    for p in pairs:
+        assert "environment" in p
+
+
+# ---------------------------------------------------------------------------
 # Double-cut MMPA (max_cut_bonds=2)
 # ---------------------------------------------------------------------------
 

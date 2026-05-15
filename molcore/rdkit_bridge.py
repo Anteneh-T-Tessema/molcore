@@ -723,10 +723,39 @@ def _mmpa_canonical_linker(smi: str) -> str:
     return min(smi, alt)
 
 
-def _mmpa_single_cut(valid_smiles: list[str]) -> "list[dict]":
+def _mmpa_environment_smarts(mol, atom_idx: int, radius: int) -> str:
+    """
+    Return a SMARTS string encoding the chemical environment around `atom_idx`
+    up to `radius` bonds away.  radius=0 returns '' (no context).
+
+    Used to annotate each MMP pair with the local environment at the
+    attachment point so downstream analysis can filter by context.
+    """
+    if radius == 0:
+        return ""
+    try:
+        from rdkit.Chem import AllChem
+        env = AllChem.FindAtomEnvironmentOfRadiusN(mol, radius, atom_idx)
+        amap: dict[int, int] = {}
+        submol = Chem.MolFragmentToSmiles(
+            mol,
+            atomsToUse=[mol.GetBondWithIdx(b).GetBeginAtomIdx() for b in env]
+            + [mol.GetBondWithIdx(b).GetEndAtomIdx() for b in env],
+            bondsToUse=list(env),
+            atomSymbols=None,
+            atomCounts=amap,
+            isomericSmiles=False,
+        )
+        return submol or ""
+    except Exception:
+        return ""
+
+
+def _mmpa_single_cut(valid_smiles: list[str], radius: int = 0) -> "list[dict]":
     from collections import defaultdict
 
     core_to_entries: dict[str, dict[str, str]] = defaultdict(dict)
+    core_to_env: dict[str, str] = {}
 
     for smi in valid_smiles:
         try:
@@ -769,24 +798,30 @@ def _mmpa_single_cut(valid_smiles: list[str]) -> "list[dict]":
                 continue
             seen_cores.add(core_can)
             core_to_entries[core_can][smi] = sub_can
+            if radius > 0 and core_can not in core_to_env:
+                core_to_env[core_can] = _mmpa_environment_smarts(mol, bi, radius)
 
     pairs = []
     for core_smi, mol_to_sub in core_to_entries.items():
         entries = sorted(mol_to_sub.items())
+        env = core_to_env.get(core_smi, "")
         for i in range(len(entries)):
             for j in range(i + 1, len(entries)):
                 mol_a, sub_a = entries[i]
                 mol_b, sub_b = entries[j]
                 if sub_a == sub_b:
                     continue
-                pairs.append({
+                pair: dict = {
                     "mol_a":     mol_a,
                     "mol_b":     mol_b,
                     "smiles_a":  sub_a,
                     "smiles_b":  sub_b,
                     "core":      core_smi,
                     "transform": f"{sub_a}>>{sub_b}",
-                })
+                }
+                if radius > 0:
+                    pair["environment"] = env
+                pairs.append(pair)
     return pairs
 
 
@@ -916,8 +951,10 @@ def mmpa(
     Args:
         smiles_list   : input SMILES (duplicates and invalids are silently skipped)
         max_cut_bonds : 1 (single-cut, default) or 2 (double-cut)
-        radius        : unused in the current implementation; reserved for
-                        environment-context SMARTS in a future release
+        radius        : heavy-atom radius around the attachment point used to
+                        compute a local environment SMARTS. 0 = no environment
+                        (default, backward-compatible). When >0, each pair dict
+                        gains an ``"environment"`` key with the SMARTS string.
 
     Returns list of dicts with keys:
         mol_a, mol_b   : SMILES of the two paired molecules
@@ -946,7 +983,7 @@ def mmpa(
             valid.append(canon)
 
     if max_cut_bonds == 1:
-        return _mmpa_single_cut(valid)
+        return _mmpa_single_cut(valid, radius=radius)
     return _mmpa_double_cut(valid)
 
 
