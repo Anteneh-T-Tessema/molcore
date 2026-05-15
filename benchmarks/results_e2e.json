@@ -1,0 +1,21 @@
+{
+  "n": 500,
+  "molcore": {
+    "standardize": 0.2420913340174593,
+    "fingerprints_rust": 0.001072417013347149,
+    "descriptors": 0.12420687498524785,
+    "scaffold_split": 0.03279112500604242,
+    "pyg_conversion_200": 0.0033337919740006328,
+    "total_mol": 500,
+    "total": 0.40349554299609736
+  },
+  "rdkit": {
+    "standardize": 0.22504724998725578,
+    "fingerprints_rdkit": 0.03726583399111405,
+    "descriptors": 0.11395241701393388,
+    "scaffold_split": 0.034489666984882206,
+    "pyg_conversion_200": 0.014374749996932223,
+    "total_mol": 500,
+    "total": 0.42512991797411814
+  }
+}

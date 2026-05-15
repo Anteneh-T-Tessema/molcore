@@ -314,6 +314,416 @@ def enumerate_reactions(
     return sorted(products)[:max_products]
 
 
+# ---------------------------------------------------------------------------
+# SDF / Mol / Mol2 file I/O
+# ---------------------------------------------------------------------------
+
+def from_sdf_file(
+    path: str,
+    sanitize: bool = True,
+    remove_hs: bool = True,
+) -> list[tuple]:
+    """
+    Read an SDF (or gzipped .sdf.gz) file.
+    Returns list of (rdmol, properties_dict). Invalid records are silently skipped.
+    """
+    import gzip as _gzip
+    path = str(path)
+    if path.endswith(".gz"):
+        with _gzip.open(path) as fh:
+            suppl = Chem.ForwardSDMolSupplier(fh, sanitize=sanitize, removeHs=remove_hs)
+            result = [(m, {k: m.GetProp(k) for k in m.GetPropNames()}) for m in suppl if m]
+    else:
+        suppl = Chem.SDMolSupplier(path, sanitize=sanitize, removeHs=remove_hs)
+        result = [(m, {k: m.GetProp(k) for k in m.GetPropNames()}) for m in suppl if m]
+    return result
+
+
+def from_molblock(molblock: str, sanitize: bool = True):
+    """Parse an MDL Mol block string. Raises ValueError on failure."""
+    mol = Chem.MolFromMolBlock(molblock, sanitize=sanitize, removeHs=True)
+    if mol is None:
+        raise ValueError("Could not parse Mol block")
+    return mol
+
+
+def write_sdf(
+    smiles_list: list[str],
+    path: str,
+    properties: "dict[str, list] | None" = None,
+) -> None:
+    """
+    Write SMILES to an SDF file. properties maps column name → list of values
+    parallel to smiles_list. Invalid SMILES are written as empty records so
+    row indices are preserved.
+    """
+    writer = Chem.SDWriter(str(path))
+    for i, smi in enumerate(smiles_list):
+        try:
+            mol = from_smiles(smi)
+            if properties:
+                for key, vals in properties.items():
+                    mol.SetProp(str(key), str(vals[i]))
+        except ValueError:
+            mol = Chem.RWMol()
+        writer.write(mol)
+    writer.close()
+
+
+def mol_to_sdf_block(smiles: str) -> str:
+    """Return an SDF-formatted Mol block string for one SMILES."""
+    from io import StringIO as _StringIO
+    mol = from_smiles(smiles)
+    sio = _StringIO()
+    w = Chem.SDWriter(sio)
+    w.write(mol)
+    w.close()
+    return sio.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Full descriptor set — named RDKit descriptors with presets
+# ---------------------------------------------------------------------------
+
+_LIPINSKI_NAMES: list[str] = [
+    "MolWt", "MolLogP", "NumHDonors", "NumHAcceptors",
+    "TPSA", "NumRotatableBonds", "RingCount",
+]
+
+_DRUGLIKE_NAMES: list[str] = _LIPINSKI_NAMES + [
+    "FractionCSP3", "HeavyAtomCount", "NumAromaticRings",
+    "NumAliphaticRings", "NumSaturatedRings", "BertzCT",
+    "MolMR", "LabuteASA",
+]
+
+DESCRIPTOR_PRESETS: dict[str, list[str]] = {
+    "lipinski": _LIPINSKI_NAMES,
+    "druglike": _DRUGLIKE_NAMES,
+}
+
+
+def list_descriptor_names() -> list[str]:
+    """Return all ~200 RDKit 2D descriptor names."""
+    from rdkit.Chem import Descriptors as _D
+    return [name for name, _ in _D.descList]
+
+
+def calc_named_descriptors(
+    smiles: list[str],
+    names: "list[str] | None" = None,
+    preset: "str | None" = None,
+) -> "tuple[np.ndarray, list[str]]":
+    """
+    Compute named RDKit descriptors for a batch of SMILES.
+
+    Exactly one of `names` or `preset` should be given.
+    preset: "lipinski" | "druglike" | "all"
+    Returns (array of shape (N, D) float32, list_of_names).
+    Invalid SMILES rows are filled with NaN.
+    """
+    from rdkit.Chem import Descriptors as _D
+
+    if preset == "all":
+        col_names = list_descriptor_names()
+    elif preset is not None:
+        col_names = DESCRIPTOR_PRESETS.get(preset)
+        if col_names is None:
+            raise ValueError(
+                f"Unknown preset {preset!r}. Choose from: {list(DESCRIPTOR_PRESETS)!r} or 'all'"
+            )
+    elif names is not None:
+        col_names = list(names)
+    else:
+        col_names = _LIPINSKI_NAMES
+
+    desc_fns: dict[str, object] = {name: fn for name, fn in _D.descList}
+    unknown = [n for n in col_names if n not in desc_fns]
+    if unknown:
+        raise ValueError(f"Unknown descriptor names: {unknown!r}")
+
+    n, d = len(smiles), len(col_names)
+    out = np.full((n, d), np.nan, dtype=np.float32)
+    for i, smi in enumerate(smiles):
+        try:
+            mol = from_smiles(smi)
+            for j, name in enumerate(col_names):
+                try:
+                    out[i, j] = float(desc_fns[name](mol))  # type: ignore[operator]
+                except Exception:
+                    pass
+        except ValueError:
+            pass
+    return out, col_names
+
+
+# ---------------------------------------------------------------------------
+# Additional fingerprint types
+# ---------------------------------------------------------------------------
+
+def maccs_keys(smiles: list[str]) -> np.ndarray:
+    """MACCS 166-bit keys. Returns (N, 167) uint8 (bit 0 unused, RDKit convention)."""
+    from rdkit.Chem import MACCSkeys, DataStructs
+    rows = []
+    for smi in smiles:
+        arr = np.zeros(167, dtype=np.uint8)
+        try:
+            fp = MACCSkeys.GenMACCSKeys(from_smiles(smi))
+            DataStructs.ConvertToNumpyArray(fp, arr)
+        except ValueError:
+            pass
+        rows.append(arr)
+    return np.stack(rows)
+
+
+def atom_pairs_fp(smiles: list[str], nbits: int = 2048) -> np.ndarray:
+    """Atom-pair hashed fingerprints. Returns (N, nbits) uint8."""
+    from rdkit.Chem import DataStructs
+    from rdkit.Chem.AtomPairs import Pairs
+    rows = []
+    for smi in smiles:
+        arr = np.zeros(nbits, dtype=np.uint8)
+        try:
+            fp = Pairs.GetHashedAtomPairFingerprintAsBitVect(from_smiles(smi), nBits=nbits)
+            DataStructs.ConvertToNumpyArray(fp, arr)
+        except (ValueError, Exception):
+            pass
+        rows.append(arr)
+    return np.stack(rows)
+
+
+def topological_torsions_fp(smiles: list[str], nbits: int = 2048) -> np.ndarray:
+    """Topological torsion fingerprints. Returns (N, nbits) uint8."""
+    from rdkit.Chem import DataStructs
+    from rdkit.Chem.AtomPairs import Torsions
+    rows = []
+    for smi in smiles:
+        arr = np.zeros(nbits, dtype=np.uint8)
+        try:
+            fp = Torsions.GetHashedTopologicalTorsionFingerprintAsBitVect(
+                from_smiles(smi), nBits=nbits
+            )
+            DataStructs.ConvertToNumpyArray(fp, arr)
+        except (ValueError, Exception):
+            pass
+        rows.append(arr)
+    return np.stack(rows)
+
+
+def rdkit_path_fp(smiles: list[str], nbits: int = 2048) -> np.ndarray:
+    """RDKit path-based fingerprints. Returns (N, nbits) uint8."""
+    from rdkit.Chem import DataStructs, RDKFingerprint
+    rows = []
+    for smi in smiles:
+        arr = np.zeros(nbits, dtype=np.uint8)
+        try:
+            fp = RDKFingerprint(from_smiles(smi), fpSize=nbits)
+            DataStructs.ConvertToNumpyArray(fp, arr)
+        except (ValueError, Exception):
+            pass
+        rows.append(arr)
+    return np.stack(rows)
+
+
+# ---------------------------------------------------------------------------
+# Full standardization pipeline
+# ---------------------------------------------------------------------------
+
+def _std_objects():
+    """Return (fragment_chooser, uncharger, tautomer_enumerator) — cached per-process."""
+    if not hasattr(_std_objects, "_cache"):
+        _std_objects._cache = (
+            MolStandardize.rdMolStandardize.LargestFragmentChooser(),
+            MolStandardize.rdMolStandardize.Uncharger(),
+            MolStandardize.rdMolStandardize.TautomerEnumerator(),
+        )
+    return _std_objects._cache
+
+
+def standardize(smiles: str) -> str:
+    """
+    Full MolVS-style standardization in one call:
+      1. Keep largest fragment (strip counterions/salts)
+      2. Neutralize charges
+      3. Canonical tautomer
+      4. Return canonical SMILES
+
+    Raises ValueError for unparseable SMILES.
+    Standardizer objects are cached at the module level — no per-call overhead.
+    """
+    frag, uncharge, taut = _std_objects()
+    mol = from_smiles(smiles)
+    mol = frag.choose(mol)
+    mol = uncharge.uncharge(mol)
+    mol = taut.Canonicalize(mol)
+    return Chem.MolToSmiles(mol)
+
+
+# ---------------------------------------------------------------------------
+# Maximum Common Substructure
+# ---------------------------------------------------------------------------
+
+def find_mcs(
+    smiles_list: list[str],
+    timeout: int = 5,
+    complete_rings_only: bool = False,
+    match_valences: bool = False,
+) -> str:
+    """
+    Find the Maximum Common Substructure of a list of molecules.
+    Returns SMARTS string (empty string if MCS is trivial or times out).
+    Raises ValueError if fewer than 2 valid molecules are given.
+    """
+    from rdkit.Chem import rdFMCS
+    mols = []
+    for smi in smiles_list:
+        try:
+            mols.append(from_smiles(smi))
+        except ValueError:
+            pass
+    if len(mols) < 2:
+        raise ValueError("Need at least 2 valid molecules for MCS")
+    result = rdFMCS.FindMCS(
+        mols,
+        timeout=timeout,
+        completeRingsOnly=complete_rings_only,
+        matchValences=match_valences,
+        ringMatchesRingOnly=True,
+        atomCompare=rdFMCS.AtomCompare.CompareElements,
+        bondCompare=rdFMCS.BondCompare.CompareOrder,
+    )
+    return result.smartsString if result.numAtoms > 0 else ""
+
+
+# ---------------------------------------------------------------------------
+# R-Group decomposition
+# ---------------------------------------------------------------------------
+
+def rgroup_decompose(
+    core_smiles: str,
+    smiles_list: list[str],
+) -> list[dict]:
+    """
+    Decompose molecules into a core + R-groups using RDKit rdRGroupDecomposition.
+
+    core_smiles: SMARTS or SMILES of the core scaffold (SMARTS preferred for wildcards).
+    Returns list[dict] — one dict per input molecule with keys 'Core', 'R1', 'R2', ...
+    Non-matching molecules get an empty dict.
+    """
+    from rdkit.Chem.rdRGroupDecomposition import RGroupDecompose
+
+    core = Chem.MolFromSmarts(core_smiles) or from_smiles(core_smiles)
+    mols, valid_idx = [], []
+    for i, smi in enumerate(smiles_list):
+        try:
+            mols.append(from_smiles(smi))
+            valid_idx.append(i)
+        except ValueError:
+            pass
+
+    rows_out: list[dict] = [{} for _ in smiles_list]
+    if not mols:
+        return rows_out
+
+    groups, _ = RGroupDecompose([core], mols, asSmiles=True, asRows=True)
+    for j, group in enumerate(groups):
+        rows_out[valid_idx[j]] = group
+    return rows_out
+
+
+# ---------------------------------------------------------------------------
+# 2D depiction
+# ---------------------------------------------------------------------------
+
+def mol_to_svg(
+    smiles: str,
+    width: int = 300,
+    height: int = 200,
+    highlight_atoms: "list[int] | None" = None,
+    highlight_bonds: "list[int] | None" = None,
+) -> str:
+    """Render a molecule to an SVG string using RDKit 2D coordinates."""
+    from rdkit.Chem.Draw import rdMolDraw2D
+    mol = from_smiles(smiles)
+    AllChem.Compute2DCoords(mol)
+    drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
+    drawer.DrawMolecule(
+        mol,
+        highlightAtoms=highlight_atoms or [],
+        highlightBonds=highlight_bonds or [],
+    )
+    drawer.FinishDrawing()
+    return drawer.GetDrawingText()
+
+
+def mol_to_png(
+    smiles: str,
+    path: str,
+    width: int = 300,
+    height: int = 200,
+) -> None:
+    """
+    Render a molecule to a PNG file.
+    Requires RDKit built with Cairo support. Falls back to a helpful error if unavailable.
+    """
+    from rdkit.Chem.Draw import rdMolDraw2D
+    mol = from_smiles(smiles)
+    AllChem.Compute2DCoords(mol)
+    try:
+        drawer = rdMolDraw2D.MolDraw2DCairo(width, height)
+    except Exception as exc:
+        raise RuntimeError(
+            "PNG rendering requires RDKit with Cairo support. "
+            "Use mol_to_svg() for a dependency-free alternative."
+        ) from exc
+    drawer.DrawMolecule(mol)
+    drawer.FinishDrawing()
+    with open(str(path), "wb") as fh:
+        fh.write(drawer.GetDrawingText())
+
+
+def mols_to_grid_svg(
+    smiles_list: list[str],
+    mols_per_row: int = 4,
+    sub_img_size: "tuple[int, int]" = (200, 150),
+    legends: "list[str] | None" = None,
+) -> str:
+    """Render a grid of molecules as a single SVG string."""
+    from rdkit.Chem import Draw
+    mols, valid_legends = [], []
+    for i, smi in enumerate(smiles_list):
+        try:
+            mol = from_smiles(smi)
+            AllChem.Compute2DCoords(mol)
+            mols.append(mol)
+            valid_legends.append(legends[i] if legends else smi)
+        except ValueError:
+            pass
+    if not mols:
+        return "<svg/>"
+    try:
+        return Draw.MolsToGridImage(
+            mols,
+            molsPerRow=mols_per_row,
+            subImgSize=sub_img_size,
+            legends=valid_legends,
+            useSVG=True,
+        )
+    except TypeError:
+        from io import BytesIO as _BytesIO
+        import base64 as _b64
+        img = Draw.MolsToGridImage(
+            mols, molsPerRow=mols_per_row, subImgSize=sub_img_size, legends=valid_legends
+        )
+        buf = _BytesIO()
+        img.save(buf, format="PNG")
+        b64 = _b64.b64encode(buf.getvalue()).decode()
+        w, h = img.size
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">'
+            f'<image href="data:image/png;base64,{b64}" width="{w}" height="{h}"/></svg>'
+        )
+
+
 def calc_descriptors_3d(smiles: str, seed: int = 42) -> dict[str, float]:
     """
     Compute shape descriptors that require a 3D conformer.

@@ -76,7 +76,7 @@ jobs:
         run: |
           pip install maturin
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pytest pyarrow
+          pip install numpy rdkit torch-geometric pytest pyarrow pandas
 
       - name: Build Rust extension
         run: maturin develop --release --features extension-module
@@ -108,7 +108,7 @@ jobs:
         run: |
           pip install maturin
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pytest pyarrow
+          pip install numpy rdkit torch-geometric pytest pyarrow pandas
           maturin develop --release --features extension-module
 
       - name: Run evals

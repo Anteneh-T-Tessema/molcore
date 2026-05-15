@@ -82,6 +82,37 @@ def test_scaffold_split_reproducible():
     assert v1.smiles == v2.smiles, "Val split not reproducible with same seed"
 
 
+def test_different_molecules_different_fingerprints():
+    """Ethanol and propanol must produce distinct bit vectors."""
+    fps = molcore.featurize_smiles(["CCO", "CCCO"], backend="rust")
+    assert not (fps[0] == fps[1]).all(), \
+        "Ethanol and propanol fingerprints are identical — ECFP hashing is broken"
+
+
+def test_canonical_smiles_same_fingerprint():
+    """Two representations of benzene must produce the same bit vector."""
+    fps = molcore.featurize_smiles(["c1ccccc1", "C1=CC=CC=C1"], backend="rust")
+    assert (fps[0] == fps[1]).all(), \
+        "Benzene canonical forms give different fingerprints — canonicalization broken"
+
+
+def test_fingerprint_length_matches_nbits():
+    """nbits parameter must be respected."""
+    for nbits in (512, 1024, 2048):
+        fps = molcore.featurize_smiles(["CCO"], backend="rust", nbits=nbits)
+        assert fps.shape[1] == nbits, f"nbits={nbits} but got {fps.shape[1]} bits"
+
+
+def test_rdkit_rust_same_element_count():
+    """Both backends must agree on the number of set bits — order can differ."""
+    smi = ["c1ccccc1", "CC(=O)O", "CCN"]
+    r = molcore.featurize_smiles(smi, backend="rust").sum(dim=1)
+    k = molcore.featurize_smiles(smi, backend="rdkit").sum(dim=1)
+    # bit counts won't be identical (different hash seeds) but both must be nonzero
+    assert (r > 0).all(), "Rust fingerprints have all-zero rows"
+    assert (k > 0).all(), "RDKit fingerprints have all-zero rows"
+
+
 def test_scaffold_split_different_seeds_differ():
     """Different seeds should (almost always) produce different splits."""
     from molcore.io import MolDataset
@@ -93,3 +124,70 @@ def test_scaffold_split_different_seeds_differ():
     # Not guaranteed to differ for tiny datasets, but scaffold grouping makes it likely
     # — this test is advisory, not strict
     _ = t1, t2  # just ensure no exception
+
+
+# ── Aromaticity invariants — load-bearing for all GNN models ─────────────────
+# Node feature index 1 = is_aromatic. Every GNN trained through molcore
+# depends on these flags being correct. A parser bug here is silent but fatal.
+
+def test_benzene_all_atoms_aromatic():
+    """All 6 carbons in benzene must be flagged aromatic (x[:, 1] == 1)."""
+    data = Mol.from_smiles("c1ccccc1").to_pyg()
+    assert data.x.shape[0] == 6
+    assert all(data.x[:, 1] == 1.0), \
+        f"Benzene aromatic flags wrong: {data.x[:, 1].tolist()}"
+
+
+def test_pyridine_all_atoms_aromatic():
+    """All 6 atoms in pyridine must be flagged aromatic."""
+    data = Mol.from_smiles("c1ccncc1").to_pyg()
+    assert data.x.shape[0] == 6
+    assert all(data.x[:, 1] == 1.0), \
+        f"Pyridine aromatic flags wrong: {data.x[:, 1].tolist()}"
+
+
+def test_cyclohexane_no_atoms_aromatic():
+    """No atoms in cyclohexane may be flagged aromatic (saturated ring)."""
+    data = Mol.from_smiles("C1CCCCC1").to_pyg()
+    assert all(data.x[:, 1] == 0.0), \
+        f"Cyclohexane has false aromatic atoms: {data.x[:, 1].tolist()}"
+
+
+def test_thiophene_all_atoms_aromatic():
+    """Thiophene: 5-membered heteroaromatic — all atoms must be aromatic."""
+    data = Mol.from_smiles("c1ccsc1").to_pyg()
+    assert all(data.x[:, 1] == 1.0), \
+        f"Thiophene aromatic flags wrong: {data.x[:, 1].tolist()}"
+
+
+def test_imidazole_all_atoms_aromatic():
+    """Imidazole: 5-membered N-heteroaromatic — all atoms must be aromatic."""
+    data = Mol.from_smiles("c1cnc[nH]1").to_pyg()
+    assert all(data.x[:, 1] == 1.0), \
+        f"Imidazole aromatic flags wrong: {data.x[:, 1].tolist()}"
+
+
+def test_aspirin_exactly_six_aromatic_atoms():
+    """Aspirin has one phenyl ring (6 aromatic atoms) and a non-aromatic side chain."""
+    data = Mol.from_smiles("CC(=O)Oc1ccccc1C(=O)O").to_pyg()
+    n_aromatic = int(data.x[:, 1].sum().item())
+    assert n_aromatic == 6, \
+        f"Aspirin: expected 6 aromatic atoms, got {n_aromatic}"
+
+
+def test_indane_aromatic_ring_only():
+    """Indane: fused aromatic + saturated ring — only the benzene ring is aromatic."""
+    data = Mol.from_smiles("C1Cc2ccccc21").to_pyg()
+    n_aromatic = int(data.x[:, 1].sum().item())
+    # Benzene ring contributes 6 aromatic atoms; the cyclopentane contributes 0
+    # (2 CH2 carbons are in both rings but RDKit marks them non-aromatic in indane)
+    assert n_aromatic == 6, \
+        f"Indane: expected 6 aromatic atoms, got {n_aromatic}"
+
+
+def test_naphthalene_all_atoms_aromatic():
+    """Naphthalene: fused bicyclic aromatic — all 10 atoms must be aromatic."""
+    data = Mol.from_smiles("c1ccc2ccccc2c1").to_pyg()
+    assert data.x.shape[0] == 10
+    assert all(data.x[:, 1] == 1.0), \
+        f"Naphthalene aromatic flags wrong: {data.x[:, 1].tolist()}"

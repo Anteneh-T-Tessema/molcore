@@ -48,6 +48,74 @@ class MolDataset:
     # -------------------------------------------------------------------------
 
     @classmethod
+    def from_sdf(
+        cls,
+        path: "str | pathlib.Path",
+        compute_fps: bool = True,
+        compute_desc: bool = True,
+        fp_backend: str = "rust",
+        nbits: int = 2048,
+        radius: int = 2,
+        sanitize: bool = True,
+        remove_hs: bool = True,
+    ) -> "MolDataset":
+        """
+        Load molecules from an SDF or gzipped SDF (.sdf.gz) file.
+
+        All SD properties are stored in `metadata`. Invalid records are silently skipped.
+        """
+        from molcore.rdkit_bridge import from_sdf_file, canonicalize
+        from rdkit import Chem as _Chem
+        records = from_sdf_file(str(path), sanitize=sanitize, remove_hs=remove_hs)
+        if not records:
+            return cls(smiles=[], metadata={})
+        smiles_list, all_props = [], []
+        for rdmol, props in records:
+            try:
+                smi = canonicalize(_Chem.MolToSmiles(rdmol))
+                smiles_list.append(smi)
+                all_props.append(props)
+            except Exception:
+                pass
+        # collect property keys across all records
+        prop_keys: set[str] = set()
+        for p in all_props:
+            prop_keys.update(p.keys())
+        metadata = {k: [p.get(k, "") for p in all_props] for k in sorted(prop_keys)}
+        ds = cls.from_smiles(
+            smiles_list,
+            compute_fps=compute_fps,
+            compute_desc=compute_desc,
+            fp_backend=fp_backend,
+            nbits=nbits,
+            radius=radius,
+        )
+        ds.metadata.update(metadata)
+        return ds
+
+    def write_sdf(
+        self,
+        path: "str | pathlib.Path",
+        extra_props: "dict[str, list] | None" = None,
+    ) -> None:
+        """
+        Write this dataset to an SDF file.
+
+        Metadata columns and `extra_props` are written as SD properties.
+        """
+        from molcore.rdkit_bridge import write_sdf as _write_sdf
+        props = dict(self.metadata)
+        if extra_props:
+            props.update(extra_props)
+        if self.labels is not None:
+            if self.labels.ndim == 1:
+                props["label"] = self.labels.tolist()
+            else:
+                for k in range(self.labels.shape[1]):
+                    props[f"label_{k}"] = self.labels[:, k].tolist()
+        _write_sdf(self.smiles, str(path), properties=props or None)
+
+    @classmethod
     def from_smiles(
         cls,
         smiles: list[str],
@@ -327,6 +395,101 @@ class MolDataset:
             compute_fps=compute_fps,
             compute_desc=compute_desc,
             fp_backend=fp_backend,
+        )
+
+    # -------------------------------------------------------------------------
+    # Pandas bridge
+    # -------------------------------------------------------------------------
+
+    def to_dataframe(self) -> "pd.DataFrame":
+        """
+        Convert to a pandas DataFrame.
+
+        Columns: 'smiles', optionally 'fp_{i}' (if fingerprints present),
+        descriptor columns ('mw','logp','heavy_atoms'), label columns,
+        and all metadata columns. Requires pandas.
+        """
+        import pandas as _pd
+        data: dict = {"smiles": self.smiles}
+        if self.descriptors is not None:
+            for i, col in enumerate(["mw", "logp", "heavy_atoms"]):
+                data[col] = self.descriptors[:, i].tolist()
+        if self.labels is not None:
+            if self.labels.ndim == 1:
+                data["label"] = self.labels.tolist()
+            else:
+                for k in range(self.labels.shape[1]):
+                    data[f"label_{k}"] = self.labels[:, k].tolist()
+        data.update(self.metadata)
+        return _pd.DataFrame(data)
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        df: "pd.DataFrame",
+        smiles_col: str = "smiles",
+        label_col: "str | None" = None,
+        compute_fps: bool = True,
+        compute_desc: bool = True,
+        fp_backend: str = "rust",
+    ) -> "MolDataset":
+        """
+        Build a MolDataset from a pandas DataFrame.
+
+        smiles_col: name of the SMILES column.
+        label_col:  optional column to use as labels (float32).
+        All other non-smiles, non-label columns become metadata.
+        """
+        smiles = df[smiles_col].tolist()
+        ds = cls.from_smiles(
+            smiles,
+            compute_fps=compute_fps,
+            compute_desc=compute_desc,
+            fp_backend=fp_backend,
+        )
+        if label_col and label_col in df.columns:
+            ds.labels = df[label_col].to_numpy(dtype=np.float32)
+        skip = {smiles_col, label_col}
+        for col in df.columns:
+            if col not in skip:
+                ds.metadata[col] = df[col].tolist()
+        return ds
+
+    # -------------------------------------------------------------------------
+    # Visualization
+    # -------------------------------------------------------------------------
+
+    def draw_grid(
+        self,
+        n: int = 20,
+        mols_per_row: int = 4,
+        sub_img_size: "tuple[int, int]" = (200, 150),
+        legend_col: "str | None" = None,
+    ) -> str:
+        """
+        Render the first `n` molecules as a grid SVG.
+
+        legend_col: metadata column to use as per-molecule legend (default: SMILES).
+        Returns an SVG string — displays inline in Jupyter.
+        """
+        from molcore.rdkit_bridge import mols_to_grid_svg
+        subset = self.smiles[:n]
+        if legend_col and legend_col in self.metadata:
+            legends = [str(v) for v in self.metadata[legend_col][:n]]
+        else:
+            legends = None
+        return mols_to_grid_svg(subset, mols_per_row=mols_per_row,
+                                 sub_img_size=sub_img_size, legends=legends)
+
+    def _repr_html_(self) -> str:
+        """Jupyter HTML: summary + 8-molecule grid."""
+        from molcore.rdkit_bridge import mols_to_grid_svg
+        grid = mols_to_grid_svg(self.smiles[:8], mols_per_row=4, sub_img_size=(180, 130))
+        has_fps  = "yes" if self.fingerprints is not None else "no"
+        has_desc = "yes" if self.descriptors  is not None else "no"
+        return (
+            f"<b>MolDataset</b> n={len(self)} | fps={has_fps} | desc={has_desc}"
+            f"<br/>{grid}"
         )
 
     def __len__(self) -> int:

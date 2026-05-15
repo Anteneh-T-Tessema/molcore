@@ -47,8 +47,11 @@ pip install rdkit
 echo "==> Installing PyG (torch-geometric)"
 pip install torch-geometric
 
+echo "==> Installing I/O + DataFrame extras"
+pip install pyarrow pandas
+
 echo "==> Installing dev tools"
-pip install pytest pytest-benchmark
+pip install pytest pytest-benchmark nbformat
 
 echo "==> Installing optional pretrained wrappers (skippable)"
 pip install molfeat datamol || echo "  (molfeat/datamol skipped — optional)"

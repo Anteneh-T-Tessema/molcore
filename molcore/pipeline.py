@@ -23,15 +23,34 @@ def featurize_smiles(
 
     Callers decide the backend — it is never auto-selected.
     """
-    if kind != "ecfp4":
-        raise ValueError(f"Unsupported featurization kind: {kind!r}. Supported: 'ecfp4'")
-
     with _timed("fingerprint", batch_size=len(smiles)):
-        if backend == "rust":
-            from molcore.featurizers.fingerprints import ecfp4
-            return ecfp4(smiles, radius=radius, nbits=nbits)
-        elif backend == "rdkit":
-            from molcore.rdkit_bridge import ecfp4_rdkit
-            return ecfp4_rdkit(smiles, radius=radius, nbits=nbits)
+        kind_lc = kind.lower()
+
+        if kind_lc == "ecfp4":
+            if backend == "rust":
+                from molcore.featurizers.fingerprints import ecfp4
+                return ecfp4(smiles, radius=radius, nbits=nbits)
+            elif backend == "rdkit":
+                from molcore.rdkit_bridge import ecfp4_rdkit
+                return ecfp4_rdkit(smiles, radius=radius, nbits=nbits)
+            else:
+                raise ValueError(f"Unknown backend: {backend!r}. Choose 'rust' or 'rdkit'.")
+
+        # Non-ECFP4 types always use the RDKit bridge (Rust doesn't implement them yet)
+        if kind_lc == "maccs":
+            from molcore.rdkit_bridge import maccs_keys
+            return torch.from_numpy(maccs_keys(smiles))
+        elif kind_lc in ("atom_pairs", "atompairs"):
+            from molcore.rdkit_bridge import atom_pairs_fp
+            return torch.from_numpy(atom_pairs_fp(smiles, nbits=nbits))
+        elif kind_lc in ("topological_torsions", "torsions"):
+            from molcore.rdkit_bridge import topological_torsions_fp
+            return torch.from_numpy(topological_torsions_fp(smiles, nbits=nbits))
+        elif kind_lc == "rdkit":
+            from molcore.rdkit_bridge import rdkit_path_fp
+            return torch.from_numpy(rdkit_path_fp(smiles, nbits=nbits))
         else:
-            raise ValueError(f"Unknown backend: {backend!r}. Choose 'rust' or 'rdkit'.")
+            raise ValueError(
+                f"Unsupported fingerprint kind: {kind!r}. "
+                "Choose: 'ecfp4', 'maccs', 'atom_pairs', 'topological_torsions', 'rdkit'."
+            )

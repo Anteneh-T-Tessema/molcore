@@ -1,0 +1,175 @@
+name: Build & Publish Wheels
+
+on:
+  push:
+    tags:
+      - "v*"               # run on version tags: v0.1.0, v0.2.0, ...
+  workflow_dispatch:       # allow manual trigger from Actions tab
+
+permissions:
+  contents: read
+  id-token: write          # needed for trusted publishing to PyPI
+
+jobs:
+  # ── Build wheels (matrix: 4 OS × {x86_64, aarch64 where applicable}) ──────
+  build-wheels:
+    name: Wheel · ${{ matrix.os }} · ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux x86_64 ──────────────────────────────────────────────────
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: auto
+
+          # ── Linux aarch64 (cross-compiled via QEMU) ───────────────────────
+          - os: ubuntu-22.04
+            target: aarch64
+            manylinux: auto
+
+          # ── macOS arm64 (Apple Silicon) ───────────────────────────────────
+          - os: macos-14
+            target: aarch64
+            manylinux: ""
+
+          # ── macOS x86_64 (Intel) ──────────────────────────────────────────
+          - os: macos-13
+            target: x86_64
+            manylinux: ""
+
+          # ── Windows x64 ───────────────────────────────────────────────────
+          - os: windows-latest
+            target: x86_64
+            manylinux: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # maturin-action handles Rust installation, cross-compilation, and
+      # manylinux containers automatically.
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: >-
+            --release
+            --features extension-module
+            --out dist
+            --interpreter python3.11 python3.12
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          # sccache speeds up repeated Rust compilations on CI
+          sccache: "true"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist/*.whl
+
+  # ── Build pure-Python sdist ───────────────────────────────────────────────
+  build-sdist:
+    name: Source distribution
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # ── Smoke-test each wheel before publishing ───────────────────────────────
+  test-wheels:
+    name: Smoke test · ${{ matrix.os }} · py${{ matrix.python-version }}
+    needs: [build-wheels]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            python-version: "3.12"
+          - os: macos-14
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-${{ matrix.os }}-*
+          merge-multiple: true
+          path: dist
+
+      - name: Install wheel + deps
+        shell: bash
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pyarrow pandas pytest
+          pip install --no-index --find-links dist molcore
+
+      - name: Smoke test
+        run: |
+          python -c "
+          import molcore
+          from molcore.molecule import Mol
+          from molcore.pipeline import featurize_smiles
+          from molcore.io import MolDataset
+          mol = Mol.from_smiles('CCO')
+          fps = featurize_smiles(['CCO', 'c1ccccc1'], backend='rust')
+          assert fps.shape == (2, 2048), f'bad shape: {fps.shape}'
+          svg = mol.to_svg()
+          assert '<svg' in svg.lower(), 'SVG render failed'
+          print('smoke test passed')
+          "
+
+      - name: Run unit tests
+        run: pytest tests/python -q --tb=short
+
+  # ── Publish to PyPI (only on version tags) ───────────────────────────────
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist, test-wheels]
+    runs-on: ubuntu-22.04
+    # Only publish on version tags — not on workflow_dispatch from a branch
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/molcore
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing (OIDC) — no API token needed.
+        # Configure at: https://pypi.org/manage/project/molcore/settings/publishing/

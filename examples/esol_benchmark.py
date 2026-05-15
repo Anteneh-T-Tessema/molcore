@@ -27,8 +27,8 @@ from molcore.predictor import PropertyPredictor
 
 # Try multiple mirrors in order — ESOL moves around as repos restructure
 ESOL_URLS = [
+    "https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/delaney-processed.csv",
     "https://raw.githubusercontent.com/deepchem/deepchem/master/deepchem/molnet/load_function/tests/assets/delaney-processed.csv",
-    "https://raw.githubusercontent.com/chemprop/chemprop/main/tests/data/regression/mol/regression.csv",
     "https://raw.githubusercontent.com/deepchem/deepchem/master/examples/tutorials/assets/delaney.csv",
 ]
 
@@ -121,6 +121,7 @@ ESOL_FALLBACK = [
 def download_esol(timeout: int = 10) -> list[tuple[str, float]]:
     """Download ESOL, trying multiple mirror URLs. Falls back to bundled subset."""
     sol_keys = [
+        "measured log solubility in mols per litre",  # DeepChem S3 canonical
         "measured log(solubility:mol/L)", "logSolubility",
         "Solubility", "solubility", "y",
     ]
@@ -129,7 +130,8 @@ def download_esol(timeout: int = 10) -> list[tuple[str, float]]:
     for url in ESOL_URLS:
         try:
             print(f"Trying {url.split('/')[-1]}...", end=" ", flush=True)
-            with urllib.request.urlopen(url, timeout=timeout) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 text = r.read().decode()
             reader = csv.DictReader(io.StringIO(text))
             records = []
@@ -256,6 +258,15 @@ def main():
     graphs = build_dataset(records)
     print(f"  {len(graphs)} graphs built.")
 
+    if len(graphs) < 200:
+        print(
+            "\n  WARNING: Running on the bundled 80-molecule fallback — network downloads failed.\n"
+            "  With n<200 molecules the test set is too small for a meaningful RMSE comparison\n"
+            "  to the published 0.58 baseline (which used 1,128 molecules).\n"
+            "  Results below are for smoke-testing only, NOT for architecture evaluation.\n"
+            "  To benchmark properly: pip install torch_geometric and ensure network access.\n"
+        )
+
     # Shuffle + split
     random.shuffle(graphs)
     n_train = int(0.8 * len(graphs))
@@ -306,14 +317,18 @@ def main():
 
     # Pass/fail vs published GCN baseline (Wu et al. MoleculeNet 2018: RMSE ≈ 0.58)
     baseline_rmse = 0.58
-    delta = test_rmse - baseline_rmse
-    if delta <= 0.05:
-        verdict = f"PASS — within 0.05 RMSE of published baseline ({baseline_rmse})"
-    elif delta <= 0.15:
-        verdict = f"CLOSE — within 0.15 RMSE (try --epochs 300 --hidden 128)"
+    if len(test_ds) < 30:
+        print(f"\n  SKIP benchmark verdict — test set too small (n={len(test_ds)}) for meaningful comparison.")
+        print(f"  Need the full 1,128-molecule ESOL dataset; run with network access.")
     else:
-        verdict = f"NOTE — {delta:.2f} above baseline (scaffold split + more epochs recommended)"
-    print(f"\n  {verdict}")
+        delta = test_rmse - baseline_rmse
+        if delta <= 0.05:
+            verdict = f"PASS — within 0.05 RMSE of published baseline ({baseline_rmse})"
+        elif delta <= 0.15:
+            verdict = f"CLOSE — within 0.15 RMSE (try --epochs 300 --hidden 128)"
+        else:
+            verdict = f"NOTE — {delta:.2f} above baseline (scaffold split + more epochs recommended)"
+        print(f"\n  {verdict}")
 
     # PropertyPredictor high-level API comparison
     print(f"\n{'=' * 60}")

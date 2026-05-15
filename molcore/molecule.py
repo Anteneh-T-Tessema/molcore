@@ -22,6 +22,13 @@ class Mol:
         canonical = graph.canonical_smiles()
         return cls(_graph=graph, smiles=canonical)
 
+    @classmethod
+    def from_molblock(cls, molblock: str) -> "Mol":
+        """Parse an MDL Mol block string into a Mol. Raises ValueError on failure."""
+        from rdkit import Chem as _Chem
+        rdmol = rdkit_bridge.from_molblock(molblock)
+        return cls.from_smiles(rdkit_bridge.canonicalize(_Chem.MolToSmiles(rdmol)))
+
     def rdmol(self):
         """Fresh RDKit Mol from canonical SMILES. Never cached — callers own it."""
         return rdkit_bridge.from_smiles(self.smiles)
@@ -33,6 +40,10 @@ class Mol:
 
     def strip_salts(self) -> "Mol":
         return Mol.from_smiles(rdkit_bridge.strip_salts(self.smiles))
+
+    def standardize(self) -> "Mol":
+        """Full standardization: strip salts → neutralize → canonical tautomer."""
+        return Mol.from_smiles(rdkit_bridge.standardize(self.smiles))
 
     # --- featurization delegates to Rust batch API ---
 
@@ -110,6 +121,36 @@ class Mol:
     def descriptors_3d(self, seed: int = 42) -> dict[str, float]:
         """Compute 3D shape descriptors (PMI, asphericity, etc.)."""
         return rdkit_bridge.calc_descriptors_3d(self.smiles, seed=seed)
+
+    # --- 2D depiction ---
+
+    def to_svg(
+        self,
+        width: int = 300,
+        height: int = 200,
+        highlight_atoms: "list[int] | None" = None,
+        highlight_bonds: "list[int] | None" = None,
+    ) -> str:
+        """Render this molecule as an SVG string."""
+        return rdkit_bridge.mol_to_svg(
+            self.smiles, width=width, height=height,
+            highlight_atoms=highlight_atoms, highlight_bonds=highlight_bonds,
+        )
+
+    def to_png(self, path: str, width: int = 300, height: int = 200) -> None:
+        """Render this molecule to a PNG file."""
+        rdkit_bridge.mol_to_png(self.smiles, path=path, width=width, height=height)
+
+    def _repr_svg_(self) -> str:
+        """Jupyter SVG display."""
+        return self.to_svg(width=300, height=200)
+
+    def _repr_html_(self) -> str:
+        """Jupyter HTML display (wraps SVG in a div with SMILES tooltip)."""
+        svg = self.to_svg(width=300, height=200)
+        return (
+            f'<div title="{self.smiles}" style="display:inline-block">{svg}</div>'
+        )
 
     def __repr__(self) -> str:
         return f"Mol(smiles={self.smiles!r}, atoms={self._graph.num_atoms()}, bonds={self._graph.num_bonds()})"
