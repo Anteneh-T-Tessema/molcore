@@ -648,6 +648,9 @@ def mmpa(
       3. Within each pair group, emit (mol_A, mol_B, substituent_A, substituent_B)
          for every pair.
 
+    Currently supports single-cut fragmentation only. Double-cut (max_cut_bonds=2),
+    which captures ring-opening and linker changes, is planned for v0.3.
+
     Args:
         smiles_list   : list of input SMILES (duplicates and invalids are skipped)
         max_cut_bonds : maximum number of bonds to cut (currently only 1 is supported)
