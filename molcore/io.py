@@ -23,6 +23,7 @@ import torch
 
 from molcore.pipeline import featurize_smiles
 from molcore.featurizers.descriptors import calc_descriptors
+from molcore._validation import validate_path, validate_smiles
 
 
 @dataclass
@@ -65,6 +66,7 @@ class MolDataset:
         All SD properties are stored in `metadata`. Invalid records are silently skipped.
         """
         from molcore.rdkit_bridge import from_sdf_file, mol_to_smiles, canonicalize
+        validate_path(path, allowed_suffixes=(".sdf", ".gz", ".sdf.gz"))
         records = from_sdf_file(str(path), sanitize=sanitize, remove_hs=remove_hs)
         if not records:
             return cls(smiles=[], metadata={})
@@ -103,6 +105,7 @@ class MolDataset:
         Metadata columns and `extra_props` are written as SD properties.
         """
         from molcore.rdkit_bridge import write_sdf as _write_sdf
+        validate_path(path, write=True, allowed_suffixes=(".sdf", ".gz", ".sdf.gz"))
         props = dict(self.metadata)
         if extra_props:
             props.update(extra_props)
@@ -159,11 +162,13 @@ class MolDataset:
         return pa.table(columns)
 
     def write_parquet(self, path: str | pathlib.Path, compression: str = "snappy") -> None:
-        pq.write_table(self.to_arrow_table(), str(path), compression=compression)
+        p = validate_path(path, write=True, allowed_suffixes=(".parquet",))
+        pq.write_table(self.to_arrow_table(), str(p), compression=compression)
 
     @classmethod
     def read_parquet(cls, path: str | pathlib.Path) -> "MolDataset":
-        table  = pq.read_table(str(path))
+        p = validate_path(path, allowed_suffixes=(".parquet",))
+        table  = pq.read_table(str(p))
         smiles = table.column("smiles").to_pylist()
 
         fps = None

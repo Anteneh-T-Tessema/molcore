@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from molcore._molcore import PyMolGraph
 from molcore import rdkit_bridge
+from molcore._validation import validate_smiles, validate_molblock
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class Mol:
 
     @classmethod
     def from_smiles(cls, smiles: str) -> "Mol":
+        validate_smiles(smiles)
         graph = PyMolGraph.from_smiles_rdkit(smiles)
         canonical = graph.canonical_smiles()
         return cls(_graph=graph, smiles=canonical)
@@ -25,6 +27,7 @@ class Mol:
     @classmethod
     def from_molblock(cls, molblock: str) -> "Mol":
         """Parse an MDL Mol block string into a Mol. Raises ValueError on failure."""
+        validate_molblock(molblock)
         from rdkit import Chem as _Chem
         rdmol = rdkit_bridge.from_molblock(molblock)
         return cls.from_smiles(rdkit_bridge.canonicalize(_Chem.MolToSmiles(rdmol)))

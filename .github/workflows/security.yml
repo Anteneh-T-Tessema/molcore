@@ -1,0 +1,82 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # every Monday 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Rust dependency CVE scan ────────────────────────────────────────────────
+  cargo-audit:
+    name: cargo audit (Rust CVEs)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit
+
+  # ── Python dependency CVE scan ──────────────────────────────────────────────
+  pip-audit:
+    name: pip-audit (Python CVEs)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit + runtime deps
+        run: |
+          pip install pip-audit
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy rdkit torch-geometric pyarrow pandas optuna
+
+      - name: Run pip-audit
+        run: pip-audit --desc on --ignore-vuln GHSA-w596-4wvx-j9j6
+
+  # ── Python static security analysis ────────────────────────────────────────
+  bandit:
+    name: bandit (Python SAST)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit
+        run: bandit -r molcore -c pyproject.toml --severity-level medium
+
+  # ── Secret scanning ─────────────────────────────────────────────────────────
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so no commit escapes scanning
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

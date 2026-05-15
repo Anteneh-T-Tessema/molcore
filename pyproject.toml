@@ -32,3 +32,10 @@ manifest-path    = "crates/molcore-core/Cargo.toml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python", "evals"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "evals", "benchmarks", "examples", "target"]
+skips = [
+    "B101",  # assert statements are idiomatic in scientific Python
+    "B311",  # random.shuffle is non-cryptographic by design (dataset splits)
+]
