@@ -1,3 +1,5 @@
+// PyO3's #[pymethods] macro expansion triggers this lint as a false positive.
+#![allow(clippy::useless_conversion)]
 use pyo3::prelude::*;
 
 pub mod molecule;

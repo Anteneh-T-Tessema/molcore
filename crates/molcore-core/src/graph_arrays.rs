@@ -3,6 +3,12 @@ use numpy::{IntoPyArray, PyArray2};
 use pyo3::prelude::*;
 use crate::molecule::{BondType, PyMolGraph};
 
+type GraphArrays<'py> = (
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray2<i64>>,
+    Bound<'py, PyArray2<f32>>,
+);
+
 pub const NODE_FEAT_DIM: usize = 9;
 // 0  atomic_num
 // 1  is_aromatic
@@ -79,11 +85,7 @@ pub fn mol_to_graph_arrays_raw(
 pub fn mol_to_graph_arrays<'py>(
     py: Python<'py>,
     mol: &PyMolGraph,
-) -> PyResult<(
-    Bound<'py, PyArray2<f32>>,
-    Bound<'py, PyArray2<i64>>,
-    Bound<'py, PyArray2<f32>>,
-)> {
+) -> PyResult<GraphArrays<'py>> {
     let (nf, ei, ef) = mol_to_graph_arrays_raw(mol);
     Ok((
         nf.into_pyarray_bound(py),

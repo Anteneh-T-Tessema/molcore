@@ -53,7 +53,7 @@ pub fn tanimoto_matrix<'py>(
 /// Pack a bit array (1 bit per u8 byte) into u64 words.
 /// 2048-bit fp → 32 u64 words. 64× fewer words to AND/OR than byte-per-bit.
 fn pack(bits: ndarray::ArrayView1<u8>) -> Vec<u64> {
-    let nwords = (bits.len() + 63) / 64;
+    let nwords = bits.len().div_ceil(64);
     let mut packed = vec![0u64; nwords];
     for (i, &b) in bits.iter().enumerate() {
         if b != 0 {
