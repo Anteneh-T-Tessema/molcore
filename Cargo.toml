@@ -7,7 +7,7 @@ rdkit-sys = "0.4"
 rdkit     = "0.4"
 purr      = "0.9"
 pyo3      = { version = "0.22", features = ["extension-module"] }
-numpy     = "0.22"
+numpy     = "0.28"
 rayon     = "1.10"
 petgraph  = { version = "0.6", features = ["serde-1"] }
 ndarray   = { version = "0.16", features = ["rayon"] }
