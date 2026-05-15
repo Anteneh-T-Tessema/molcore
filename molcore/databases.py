@@ -276,3 +276,110 @@ def _parse_zinc_record(d: dict) -> ZINCCompound:
         mw      = float(d.get("mwt") or 0),
         logp    = float(d.get("logp") or 0),
     )
+
+
+# ---------------------------------------------------------------------------
+# TDC (Therapeutics Data Commons)
+# ---------------------------------------------------------------------------
+
+def tdc_dataset(
+    name: str,
+    split_method: str = "scaffold",
+) -> "dict[str, pd.DataFrame]":
+    """
+    Load a TDC benchmark dataset and return train/valid/test splits.
+
+    ``name`` can be any TDC ADMET single-prediction or DTI multi-prediction
+    dataset, e.g.:
+    - ADMET: ``"BBB_Martini"``, ``"hERG"``, ``"AMES"``, ``"Caco2_Wang"``
+    - DTI:   ``"BindingDB_Kd"``, ``"BindingDB_IC50"``, ``"Davis"``, ``"KIBA"``
+
+    Returns a dict with keys ``"train"``, ``"valid"``, ``"test"``.
+    Each value is a pandas DataFrame. ADMET frames have columns
+    ``["Drug", "Y"]``; DTI frames have ``["Drug", "Target", "Y"]``.
+
+    Requires ``pip install molcore[bio]`` (PyTDC).
+    """
+    try:
+        import tdc  # noqa: F401
+    except ImportError:
+        raise ImportError("PyTDC is required: pip install molcore[bio]")
+
+    # Try ADMET single-pred first, fall back to DTI
+    try:
+        from tdc.single_pred import ADMET as TDC_ADMET
+        data = TDC_ADMET(name=name)
+    except Exception:
+        try:
+            from tdc.multi_pred import DTI as TDC_DTI
+            data = TDC_DTI(name=name)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not load TDC dataset {name!r}. "
+                f"Check the name against https://tdcommons.ai/. Original error: {exc}"
+            )
+
+    return data.get_split(method=split_method)
+
+
+# ---------------------------------------------------------------------------
+# BindingDB (via TDC)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BindingRecord:
+    smiles: str
+    target_sequence: str
+    affinity: float          # raw value in original units (nM for Kd/IC50/Ki)
+    affinity_type: str       # "Kd", "IC50", "Ki", "EC50"
+    target_name: str = ""
+
+
+def bindingdb_search(
+    affinity: str = "Kd",
+    target: str | None = None,
+    max_records: int = 5_000,
+    split: str = "train",
+) -> list[BindingRecord]:
+    """
+    Fetch drug-target binding records from BindingDB via TDC.
+
+    Parameters
+    ----------
+    affinity : str
+        One of ``"Kd"``, ``"IC50"``, ``"Ki"``, ``"EC50"``.
+    target : str or None
+        Optional substring filter on the target name/sequence column.
+        Pass a UniProt ID fragment or protein name fragment to narrow results.
+    max_records : int
+        Maximum number of records to return.
+    split : str
+        TDC split to use: ``"train"``, ``"valid"``, or ``"test"``.
+
+    Returns a list of :class:`BindingRecord` objects.
+
+    Requires ``pip install molcore[bio]`` (PyTDC).
+    """
+    splits = tdc_dataset(f"BindingDB_{affinity}", split_method="random")
+    df = splits[split]
+
+    if target is not None:
+        mask = (
+            df["Target"].str.contains(target, case=False, na=False)
+            if "Target_ID" not in df.columns
+            else df.get("Target_ID", df["Target"]).str.contains(target, case=False, na=False)
+        )
+        df = df[mask]
+
+    df = df.head(max_records)
+
+    records = []
+    for _, row in df.iterrows():
+        records.append(BindingRecord(
+            smiles          = str(row.get("Drug", "")),
+            target_sequence = str(row.get("Target", "")),
+            affinity        = float(row.get("Y", float("nan"))),
+            affinity_type   = affinity,
+            target_name     = str(row.get("Target_ID", "")),
+        ))
+    return records

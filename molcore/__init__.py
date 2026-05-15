@@ -2,7 +2,7 @@ from molcore.molecule import Mol
 from molcore.pipeline import featurize_smiles
 from molcore.io import MolDataset, MolTorchDataset
 from molcore.predictor import PropertyPredictor
-from molcore import databases, gpu, pandas_tools
+from molcore import databases, gpu, pandas_tools, admet, protein
 from molcore.rdkit_bridge import (
     # substructure
     filter_by_smarts,
@@ -90,4 +90,6 @@ __all__ = [
     "databases",
     "gpu",
     "pandas_tools",
+    "admet",
+    "protein",
 ]

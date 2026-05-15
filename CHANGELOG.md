@@ -6,9 +6,66 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.2.0] — 2026-05-15
+## [Unreleased] — v0.3.0
 
 ### Added
+
+- **ADMET module** (`molcore.admet`):
+  - `admet_screen(smiles)` — rule-based profiling: Lipinski Ro5, Veber,
+    Egan, PAINS, and Brenk structural alerts. No extra dependencies.
+  - `admet_screen_df(smiles)` — same, returns a pandas DataFrame.
+  - `ADMETPredictor.from_tdc(endpoint)` — random-forest predictor trained
+    on any TDC ADMET benchmark (BBB, hERG, AMES, CYP, Caco2, solubility,
+    …). Requires `pip install molcore[bio]`.
+  - Supports save/load for trained predictors.
+
+- **Protein module** (`molcore.protein`):
+  - `ProteinSeq` — immutable protein sequence with ESM-2 embeddings.
+  - `ProteinSeq.from_sequence(seq)` — create from amino acid string (validates
+    standard 20-letter IUPAC codes, rejects oversize inputs).
+  - `ProteinSeq.from_fasta(path)` and `from_fasta_string(text)` — parse
+    single- or multi-record FASTA without BioPython.
+  - `ProteinSeq.embed(model, pooling)` — ESM-2 mean/CLS/per-residue
+    embeddings via HuggingFace `transformers`. Default model:
+    `facebook/esm2_t6_8M_UR50D` (8 M params, 320-dim).
+  - `ProteinSeq.embed_batch(sequences)` — batch embed returning (N, hidden)
+    tensor.
+  - `ProteinSeq.to_pyg()` — residue-level PyG graph with 20-dim one-hot
+    node features and bidirectional sequential edges.
+  - Requires `pip install molcore[bio]` for embedding.
+
+- **BindingDB & TDC data loaders**:
+  - `MolDataset.from_tdc(dataset, split)` — load any TDC ADMET or DTI
+    dataset (BBB, hERG, BindingDB_Kd, Davis, KIBA, …) directly into a
+    `MolDataset` with labels and metadata.
+  - `MolDataset.from_bindingdb(affinity, target)` — filter BindingDB by
+    affinity type (Kd / IC50 / Ki / EC50) and optional target name/UniProt
+    substring. Labels are log-transformed to pIC50 by default.
+  - `databases.tdc_dataset(name)` — low-level TDC split loader.
+  - `databases.bindingdb_search(affinity, target)` — returns
+    `BindingRecord` objects with SMILES, protein sequence, and affinity.
+  - Requires `pip install molcore[bio]` (PyTDC).
+
+- **New optional dependency group** `bio`:
+  `pip install molcore[bio]` installs `transformers`, `sentencepiece`,
+  `PyTDC`, `scikit-learn`, and `pandas`.
+
+### Security (also in v0.2.x patch)
+
+- `molcore/_validation.py`: `validate_smiles` (10 000-char cap),
+  `validate_molblock` (1 MB cap), `validate_path` (null-byte + extension check).
+- Wired into `Mol.from_smiles`, `Mol.from_molblock`, `MolDataset.from_sdf`,
+  `write_sdf`, `read_parquet`, `write_parquet`.
+- `.github/workflows/security.yml`: cargo-audit, pip-audit, bandit, gitleaks.
+- `.github/dependabot.yml`: weekly auto-updates for Actions, Cargo, pip.
+- `ci.yml`: explicit `permissions: contents: read`.
+- `SECURITY.md`: responsible disclosure policy, 14-day SLA for critical issues.
+
+---
+
+## [0.2.0] — 2026-05-15
+
+### Features added
 
 - **GAT and GIN architectures** (`PropertyPredictor(model_type="gat"|"gin"|"gcn")`):
   drop-in alternatives to GCN backed by a unified `_MolGNN` module. `model_type` is

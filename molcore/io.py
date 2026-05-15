@@ -640,6 +640,166 @@ class MolDataset:
             metadata     = new_meta,
         )
 
+    # -------------------------------------------------------------------------
+    # TDC / BindingDB factory methods
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def from_tdc(
+        cls,
+        dataset: str,
+        split: str = "train",
+        split_method: str = "scaffold",
+        log_transform: bool = True,
+        compute_fps: bool = True,
+        compute_desc: bool = True,
+        fp_backend: str = "rust",
+    ) -> "MolDataset":
+        """
+        Build a MolDataset from any TDC ADMET or DTI benchmark dataset.
+
+        Parameters
+        ----------
+        dataset : str
+            TDC dataset name, e.g. ``"BBB_Martini"``, ``"hERG"``,
+            ``"BindingDB_Kd"``, ``"Davis"``.
+        split : str
+            Which split to load: ``"train"``, ``"valid"``, or ``"test"``.
+        split_method : str
+            TDC split strategy: ``"scaffold"`` (default), ``"random"``,
+            or ``"cold_drug"`` (DTI only).
+        log_transform : bool
+            For regression endpoints in nM units (Kd, IC50, Ki), convert
+            labels to ``pIC50 = -log10(Y * 1e-9)`` if True.
+        compute_fps : bool
+            Pre-compute Morgan ECFP4 fingerprints.
+        compute_desc : bool
+            Pre-compute physicochemical descriptors.
+
+        Requires ``pip install molcore[bio]`` (PyTDC).
+
+        Example::
+
+            ds = MolDataset.from_tdc("BBB_Martini", split="train")
+            # ds.smiles   → SMILES strings
+            # ds.labels   → binary BBB labels (0/1)
+        """
+        from molcore.databases import tdc_dataset
+        import math
+
+        splits = tdc_dataset(dataset, split_method=split_method)
+        df = splits[split]
+
+        smiles_list = df["Drug"].tolist()
+        y_raw = df["Y"].to_numpy(dtype=np.float32)
+
+        # Detect regression endpoints by fractional labels
+        is_regression = not set(np.unique(y_raw)).issubset({0.0, 1.0})
+
+        if is_regression and log_transform:
+            # nM → pIC50 conversion; clamp to avoid log(0)
+            y = np.array(
+                [-math.log10(max(v * 1e-9, 1e-15)) for v in y_raw],
+                dtype=np.float32,
+            )
+        else:
+            y = y_raw
+
+        ds = cls.from_smiles(
+            smiles_list,
+            compute_fps=compute_fps,
+            compute_desc=compute_desc,
+            fp_backend=fp_backend,
+        )
+        ds.labels = y
+        ds.metadata["tdc_dataset"] = [dataset] * len(smiles_list)
+        ds.metadata["tdc_split"]   = [split]   * len(smiles_list)
+
+        # If DTI dataset: store protein sequences in metadata
+        if "Target" in df.columns:
+            ds.metadata["protein_sequence"] = df["Target"].tolist()
+        if "Target_ID" in df.columns:
+            ds.metadata["target_id"] = df["Target_ID"].tolist()
+
+        return ds
+
+    @classmethod
+    def from_bindingdb(
+        cls,
+        affinity: str = "Kd",
+        target: str | None = None,
+        split: str = "train",
+        log_transform: bool = True,
+        max_records: int = 5_000,
+        compute_fps: bool = True,
+        compute_desc: bool = True,
+        fp_backend: str = "rust",
+    ) -> "MolDataset":
+        """
+        Build a MolDataset from BindingDB bioactivity data via TDC.
+
+        Parameters
+        ----------
+        affinity : str
+            Measurement type: ``"Kd"``, ``"IC50"``, ``"Ki"``, or ``"EC50"``.
+        target : str or None
+            Optional substring filter on protein name/sequence (e.g. ``"EGFR"``).
+        split : str
+            TDC data split: ``"train"``, ``"valid"``, or ``"test"``.
+        log_transform : bool
+            Convert nM values to pIC50 = -log10(Y × 1e-9).
+        max_records : int
+            Cap on number of records loaded.
+
+        The returned dataset has:
+        - ``ds.labels``  → pIC50 (or raw nM if log_transform=False)
+        - ``ds.metadata["protein_sequence"]`` → target amino acid sequences
+        - ``ds.metadata["affinity_type"]``    → affinity measurement type
+        - ``ds.metadata["target_id"]``        → target identifiers (if available)
+
+        Requires ``pip install molcore[bio]`` (PyTDC).
+
+        Example::
+
+            ds = MolDataset.from_bindingdb("Kd", target="EGFR")
+            # Fine-tune a property predictor on EGFR binding affinity
+            pred = PropertyPredictor(hidden=128, epochs=200)
+            train, val, test = ds.scaffold_split()
+            pred.fit(train, val_dataset=val)
+        """
+        from molcore.databases import bindingdb_search
+        import math
+
+        records = bindingdb_search(
+            affinity=affinity, target=target,
+            max_records=max_records, split=split,
+        )
+        if not records:
+            return cls(smiles=[], metadata={})
+
+        smiles_list = [r.smiles for r in records]
+        y_raw = np.array([r.affinity for r in records], dtype=np.float32)
+
+        if log_transform:
+            y = np.array(
+                [-math.log10(max(v * 1e-9, 1e-15)) for v in y_raw],
+                dtype=np.float32,
+            )
+        else:
+            y = y_raw
+
+        ds = cls.from_smiles(
+            smiles_list,
+            compute_fps=compute_fps,
+            compute_desc=compute_desc,
+            fp_backend=fp_backend,
+        )
+        ds.labels = y
+        ds.metadata["protein_sequence"] = [r.target_sequence for r in records]
+        ds.metadata["affinity_type"]    = [r.affinity_type    for r in records]
+        ds.metadata["target_id"]        = [r.target_name      for r in records]
+        return ds
+
     def _repr_html_(self) -> str:
         """Jupyter HTML: summary + 8-molecule grid."""
         from molcore.rdkit_bridge import mols_to_grid_svg
