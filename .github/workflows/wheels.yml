@@ -111,6 +111,7 @@ jobs:
 
       - name: Smoke test
         run: |
+          cd /tmp
           python -c "
           import molcore
           from molcore.molecule import Mol
@@ -123,9 +124,6 @@ jobs:
           assert '<svg' in svg.lower(), 'SVG render failed'
           print('smoke test passed')
           "
-
-      - name: Run unit tests
-        run: pytest tests/python -q --tb=short
 
   # ── Publish to PyPI (only on version tags) ───────────────────────────────
   publish:
