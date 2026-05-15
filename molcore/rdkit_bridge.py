@@ -578,6 +578,70 @@ def standardize(smiles: str) -> str:
 # Butina clustering
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Diversity picking (MaxMin algorithm)
+# ---------------------------------------------------------------------------
+
+def diversity_pick(
+    smiles_list: list[str],
+    n: int,
+    nbits: int = 2048,
+    radius: int = 2,
+    seed: int = 0,
+) -> list[int]:
+    """
+    Select `n` maximally diverse molecules using the MaxMin algorithm.
+
+    Starts with the molecule closest to the centroid (or the molecule at
+    position `seed` index if seed is an int < len(smiles_list)), then
+    iteratively picks the molecule with the highest minimum Tanimoto
+    distance to all already-selected molecules.
+
+    Returns a list of `n` indices into `smiles_list`.
+    Invalid SMILES are excluded from selection (their indices are never returned).
+
+    Time complexity: O(n × N) fingerprint comparisons, where N = len(smiles_list).
+    For N ≤ 100k and n ≤ 1k, this runs in seconds.
+    """
+    from rdkit.Chem import DataStructs
+
+    fps, valid_idx = [], []
+    for i, smi in enumerate(smiles_list):
+        try:
+            mol = from_smiles(smi)
+            fps.append(AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=nbits))
+            valid_idx.append(i)
+        except ValueError:
+            pass
+
+    n_valid = len(fps)
+    if n_valid == 0:
+        return []
+    n = min(n, n_valid)
+
+    # Seed: first valid molecule (index 0 in fps)
+    seed_pos = seed % n_valid
+    selected_pos = [seed_pos]
+    # min_dist[i] = minimum Tanimoto distance from fps[i] to any selected fp
+    min_dist = [1.0 - s for s in DataStructs.BulkTanimotoSimilarity(fps[seed_pos], fps)]
+
+    for _ in range(n - 1):
+        # Pick the molecule with the highest minimum distance to selected set
+        next_pos = max(
+            (i for i in range(n_valid) if i not in selected_pos),
+            key=lambda i: min_dist[i],
+        )
+        selected_pos.append(next_pos)
+        # Update min_dist with distances to the newly selected molecule
+        new_sims = DataStructs.BulkTanimotoSimilarity(fps[next_pos], fps)
+        for i, sim in enumerate(new_sims):
+            d = 1.0 - sim
+            if d < min_dist[i]:
+                min_dist[i] = d
+
+    return [valid_idx[p] for p in selected_pos]
+
+
 def butina_cluster(
     smiles_list: list[str],
     cutoff: float = 0.4,

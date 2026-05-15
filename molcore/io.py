@@ -503,6 +503,36 @@ class MolDataset:
                                  sub_img_size=sub_img_size, legends=legends)
 
     # -------------------------------------------------------------------------
+    # Diversity picking
+    # -------------------------------------------------------------------------
+
+    def diversity_pick(
+        self,
+        n: int,
+        nbits: int = 2048,
+        radius: int = 2,
+        seed: int = 0,
+    ) -> "MolDataset":
+        """
+        Select `n` maximally diverse molecules using the MaxMin algorithm.
+
+        Iteratively picks the molecule with the highest minimum Tanimoto distance
+        to all already-selected molecules. Returns a new MolDataset of exactly `n`
+        molecules (fewer if the dataset has fewer valid molecules).
+
+        Typical use: pare down a large enumerated library to a diverse screening set.
+
+        Args:
+            n     : number of molecules to select
+            nbits : fingerprint length for diversity calculation (default 2048)
+            radius: Morgan fingerprint radius (default 2)
+            seed  : starting molecule index; varied across runs for ensemble picking
+        """
+        from molcore.rdkit_bridge import diversity_pick as _pick
+        indices = _pick(self.smiles, n=n, nbits=nbits, radius=radius, seed=seed)
+        return self._subset(indices)
+
+    # -------------------------------------------------------------------------
     # Cross-validation splits
     # -------------------------------------------------------------------------
 

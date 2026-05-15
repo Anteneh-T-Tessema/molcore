@@ -37,7 +37,9 @@ import torch.nn.functional as F
 # GCN model
 # ---------------------------------------------------------------------------
 
-class _MolGCN(torch.nn.Module):
+class _MolGNN(torch.nn.Module):
+    """Unified GNN backbone supporting GCN, GAT, and GIN architectures."""
+
     def __init__(
         self,
         in_features: int = 9,
@@ -45,24 +47,59 @@ class _MolGCN(torch.nn.Module):
         n_layers: int = 3,
         dropout: float = 0.1,
         n_outputs: int = 1,
+        model_type: str = "gcn",
     ):
         super().__init__()
-        from torch_geometric.nn import GCNConv, global_mean_pool
-        self._pool = global_mean_pool
-        self.convs = torch.nn.ModuleList()
+        from torch_geometric.nn import GCNConv, GATConv, GINConv, global_mean_pool
+        self._pool   = global_mean_pool
+        self.dropout = torch.nn.Dropout(dropout)
+        self.convs   = torch.nn.ModuleList()
+
         dims = [in_features] + [hidden] * n_layers
         for d_in, d_out in zip(dims[:-1], dims[1:]):
-            self.convs.append(GCNConv(d_in, d_out))
-        self.dropout = torch.nn.Dropout(dropout)
-        self.lin = torch.nn.Linear(hidden, n_outputs)
+            if model_type == "gcn":
+                self.convs.append(GCNConv(d_in, d_out))
+            elif model_type == "gat":
+                heads = 4
+                # Last layer collapses heads → hidden for uniform pooling
+                out = d_out // heads if d_out % heads == 0 else d_out
+                self.convs.append(GATConv(d_in, out, heads=heads, concat=True,
+                                          dropout=dropout))
+            elif model_type == "gin":
+                mlp = torch.nn.Sequential(
+                    torch.nn.Linear(d_in, d_out),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(d_out, d_out),
+                )
+                self.convs.append(GINConv(mlp, train_eps=True))
+            else:
+                raise ValueError(
+                    f"Unknown model_type {model_type!r}. Choose: 'gcn', 'gat', 'gin'"
+                )
+
+        self.model_type = model_type
+        # Resolve actual output dim of last conv for the linear head
+        if model_type == "gat":
+            heads = 4
+            last_out = (hidden // heads if hidden % heads == 0 else hidden) * heads
+        else:
+            last_out = hidden
+        self.lin = torch.nn.Linear(last_out, n_outputs)
 
     def forward(self, data) -> torch.Tensor:
         x, ei, batch = data.x, data.edge_index, data.batch
         for conv in self.convs:
-            x = F.relu(conv(x, ei))
+            if self.model_type == "gat":
+                x = F.elu(conv(x, ei))
+            else:
+                x = F.relu(conv(x, ei))
             x = self.dropout(x)
         x = self._pool(x, batch)
         return self.lin(x).squeeze(-1)
+
+
+# Keep the old name as an alias so saved checkpoints using _MolGCN still load
+_MolGCN = _MolGNN
 
 
 # ---------------------------------------------------------------------------
@@ -72,28 +109,30 @@ class _MolGCN(torch.nn.Module):
 @dataclass
 class PropertyPredictor:
     """
-    GCN-based molecular property predictor.
+    GNN-based molecular property predictor.
 
     Attributes:
-        hidden    : hidden dimension per GCN layer (default 64)
-        n_layers  : number of GCN message-passing layers (default 3)
-        dropout   : dropout rate (default 0.1)
-        epochs    : training epochs (default 150)
-        lr        : initial learning rate (default 5e-3)
-        batch_size: molecules per batch (default 32)
-        device    : 'cpu', 'cuda', or 'auto' (default 'auto')
-        n_outputs : number of output values per molecule (default 1)
+        hidden     : hidden dimension per GNN layer (default 64)
+        n_layers   : number of message-passing layers (default 3)
+        dropout    : dropout rate (default 0.1)
+        epochs     : training epochs (default 150)
+        lr         : initial learning rate (default 5e-3)
+        batch_size : molecules per batch (default 32)
+        device     : 'cpu', 'cuda', or 'auto' (default 'auto')
+        n_outputs  : number of output values per molecule (default 1)
+        model_type : GNN architecture — 'gcn' (default), 'gat', or 'gin'
     """
-    hidden:     int   = 64
-    n_layers:   int   = 3
-    dropout:    float = 0.1
-    epochs:     int   = 150
-    lr:         float = 5e-3
-    batch_size: int   = 32
-    device:     str   = "auto"
-    n_outputs:  int   = 1
+    hidden:      int   = 64
+    n_layers:    int   = 3
+    dropout:     float = 0.1
+    epochs:      int   = 150
+    lr:          float = 5e-3
+    batch_size:  int   = 32
+    device:      str   = "auto"
+    n_outputs:   int   = 1
+    model_type:  str   = "gcn"
 
-    _model:    Optional[_MolGCN] = field(default=None, init=False, repr=False)
+    _model:    Optional[_MolGNN] = field(default=None, init=False, repr=False)
     _history:  dict              = field(default_factory=dict, init=False, repr=False)
 
     # ------------------------------------------------------------------
@@ -128,12 +167,13 @@ class PropertyPredictor:
             if val_dataset is not None else None
         )
 
-        self._model = _MolGCN(
+        self._model = _MolGNN(
             in_features=9,
             hidden=self.hidden,
             n_layers=self.n_layers,
             dropout=self.dropout,
             n_outputs=self.n_outputs,
+            model_type=self.model_type,
         ).to(dev)
 
         opt = torch.optim.Adam(self._model.parameters(), lr=self.lr, weight_decay=1e-5)
@@ -296,6 +336,7 @@ class PropertyPredictor:
             "hparams": {
                 "hidden": self.hidden, "n_layers": self.n_layers,
                 "dropout": self.dropout, "n_outputs": self.n_outputs,
+                "model_type": self.model_type,
             },
             "history": self._history,
         }, str(path))
@@ -308,14 +349,16 @@ class PropertyPredictor:
         pred = cls(
             hidden=hp["hidden"], n_layers=hp["n_layers"],
             dropout=hp["dropout"], n_outputs=hp["n_outputs"],
+            model_type=hp.get("model_type", "gcn"),  # backward-compat: old checkpoints default to gcn
             **kwargs,
         )
-        pred._model = _MolGCN(
+        pred._model = _MolGNN(
             in_features=9,
             hidden=hp["hidden"],
             n_layers=hp["n_layers"],
             dropout=hp["dropout"],
             n_outputs=hp["n_outputs"],
+            model_type=hp.get("model_type", "gcn"),
         )
         pred._model.load_state_dict(ckpt["state_dict"])
         pred._model.eval()
@@ -405,10 +448,11 @@ class PropertyPredictor:
                 "dropout":     trial.suggest_float("dropout", 0.0, 0.3),
                 "lr":          trial.suggest_float("lr", 1e-4, 1e-2, log=True),
                 "batch_size":  trial.suggest_categorical("batch_size", [16, 32, 64]),
+                "model_type":  trial.suggest_categorical("model_type", ["gcn", "gat", "gin"]),
             }
             candidate = PropertyPredictor(
                 hidden=hp["hidden"], n_layers=hp["n_layers"], dropout=hp["dropout"],
-                lr=hp["lr"], batch_size=hp["batch_size"],
+                lr=hp["lr"], batch_size=hp["batch_size"], model_type=hp["model_type"],
                 epochs=self.epochs, device=self.device, n_outputs=self.n_outputs,
             )
             candidate.fit(dataset, val_dataset=val_dataset, verbose=False)
@@ -429,10 +473,11 @@ class PropertyPredictor:
         self.dropout    = hp["dropout"]
         self.lr         = hp["lr"]
         self.batch_size = hp["batch_size"]
+        self.model_type = hp["model_type"]
 
-        self._model = _MolGCN(
+        self._model = _MolGNN(
             in_features=9, hidden=self.hidden, n_layers=self.n_layers,
-            dropout=self.dropout, n_outputs=self.n_outputs,
+            dropout=self.dropout, n_outputs=self.n_outputs, model_type=self.model_type,
         )
         self._model.load_state_dict(_best["state"])
         self._model.eval()

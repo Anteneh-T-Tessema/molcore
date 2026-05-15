@@ -8,10 +8,11 @@ from molcore.rdkit_bridge import (
     filter_by_smarts,
     substructure_match,
     substructure_matches,
-    # scaffold + clustering
+    # scaffold + clustering + diversity
     murcko_scaffold,
     scaffold_split,
     butina_cluster,
+    diversity_pick,
     # MMPA
     mmpa,
     # reactions
@@ -53,10 +54,11 @@ __all__ = [
     "filter_by_smarts",
     "substructure_match",
     "substructure_matches",
-    # scaffold + clustering
+    # scaffold + clustering + diversity
     "murcko_scaffold",
     "scaffold_split",
     "butina_cluster",
+    "diversity_pick",
     # MMPA
     "mmpa",
     # reactions
