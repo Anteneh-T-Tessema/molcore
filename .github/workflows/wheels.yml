@@ -154,7 +154,7 @@ jobs:
     # Only publish on version tags — not on workflow_dispatch from a branch
     if: startsWith(github.ref, 'refs/tags/v')
     environment:
-      name: pypi
+      name: pypl
       url: https://pypi.org/p/molcore-chem
 
     steps:
@@ -172,4 +172,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         # Uses trusted publishing (OIDC) — no API token needed.
-        # Configure at: https://pypi.org/manage/project/molcore-chem/settings/publishing/
+        # Uses OIDC trusted publishing. Environment name: pypl
