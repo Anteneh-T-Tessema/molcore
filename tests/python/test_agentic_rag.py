@@ -8,6 +8,9 @@ from molcore.agentic_rag import (
     score_relevance,
     synthesize_answer,
     retrieve_local_tools,
+    retrieve_pubchem,
+    retrieve_pubchem_by_name,
+    route_and_retrieve,
     RetrievedChunk,
     ChemRAG,
 )
@@ -95,3 +98,88 @@ def test_rag_result_dataclass_fields():
     assert hasattr(result, "sources")
     assert hasattr(result, "iterations")
     assert hasattr(result, "relevant")
+
+
+# ── retrieve_pubchem (mocked network) ────────────────────────────────────────
+
+def _mock_pubchem_response(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    def fake_fetch(url):
+        return {
+            "PropertyTable": {"Properties": [{
+                "MolecularFormula": "C2H6O",
+                "MolecularWeight": "46.07",
+                "XLogP": -0.31,
+                "TPSA": 20.23,
+            }]}
+        }
+    monkeypatch.setattr(rag_mod, "_fetch_json", fake_fetch)
+
+
+def test_retrieve_pubchem_returns_chunks(monkeypatch):
+    _mock_pubchem_response(monkeypatch)
+    chunks = retrieve_pubchem("ethanol properties", ["CCO"])
+    assert len(chunks) == 1
+    assert chunks[0].source == "pubchem"
+    assert "MW=" in chunks[0].content or "MolecularWeight" in chunks[0].content or "46" in chunks[0].content
+
+
+def test_retrieve_pubchem_empty_smiles(monkeypatch):
+    _mock_pubchem_response(monkeypatch)
+    chunks = retrieve_pubchem("ethanol", [])
+    assert chunks == []
+
+
+def test_retrieve_pubchem_network_failure_returns_empty(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    monkeypatch.setattr(rag_mod, "_fetch_json", lambda url: None)
+    chunks = retrieve_pubchem("query", ["CCO"])
+    assert chunks == []
+
+
+# ── retrieve_pubchem_by_name (mocked network) ────────────────────────────────
+
+def test_retrieve_pubchem_by_name_returns_chunks(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    def fake_fetch(url):
+        return {
+            "PropertyTable": {"Properties": [{
+                "IsomericSMILES": "CC(=O)Oc1ccccc1C(=O)O",
+                "MolecularWeight": "180.16",
+                "XLogP": 1.19,
+            }]}
+        }
+    monkeypatch.setattr(rag_mod, "_fetch_json", fake_fetch)
+    chunks = retrieve_pubchem_by_name("aspirin properties")
+    assert isinstance(chunks, list)
+    assert all(c.source == "pubchem_name" for c in chunks)
+
+
+def test_retrieve_pubchem_by_name_short_words_skipped(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    monkeypatch.setattr(rag_mod, "_fetch_json", lambda url: None)
+    # All words <= 4 chars → no lookups
+    chunks = retrieve_pubchem_by_name("the MW of H2O")
+    assert chunks == []
+
+
+# ── route_and_retrieve (mocked network) ──────────────────────────────────────
+
+def test_route_and_retrieve_includes_local(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    monkeypatch.setattr(rag_mod, "_fetch_json", lambda url: None)
+    chunks = route_and_retrieve("descriptors of ethanol", ["CCO"], iteration=1)
+    sources = {c.source for c in chunks}
+    assert "local_tools" in sources
+
+
+def test_route_and_retrieve_no_smiles_uses_name_lookup(monkeypatch):
+    import molcore.agentic_rag as rag_mod
+    called = []
+    def fake_fetch(url):
+        called.append(url)
+        return None
+    monkeypatch.setattr(rag_mod, "_fetch_json", fake_fetch)
+    route_and_retrieve("aspirin logP query", [], iteration=1)
+    # Should have attempted a PubChem name lookup for 'aspirin'
+    assert any("name" in u or "compound" in u for u in called)

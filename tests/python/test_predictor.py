@@ -136,3 +136,37 @@ def test_save_before_fit_raises():
     pred = PropertyPredictor()
     with pytest.raises(RuntimeError, match="save"):
         pred.save("/tmp/noop.pt")
+
+
+# ── predict_with_uncertainty ──────────────────────────────────────────────────
+
+def test_uncertainty_returns_mean_and_std():
+    ds = _mini_dataset()
+    pred = PropertyPredictor(hidden=16, n_layers=2, epochs=5, batch_size=8, dropout=0.1)
+    pred.fit(ds, verbose=False)
+    mean, std = pred.predict_with_uncertainty(_SMILES[:5])
+    assert mean.shape == (5,)
+    assert std.shape  == (5,)
+
+
+def test_uncertainty_std_non_negative():
+    ds = _mini_dataset()
+    pred = PropertyPredictor(hidden=16, epochs=5, batch_size=8, dropout=0.1)
+    pred.fit(ds, verbose=False)
+    _, std = pred.predict_with_uncertainty(_SMILES[:5])
+    assert (std[~np.isnan(std)] >= 0).all()
+
+
+def test_uncertainty_invalid_smiles_nan():
+    ds = _mini_dataset()
+    pred = PropertyPredictor(hidden=16, epochs=5, batch_size=8, dropout=0.1)
+    pred.fit(ds, verbose=False)
+    mean, std = pred.predict_with_uncertainty(["CCO", "NOT_A_MOL"])
+    assert np.isnan(mean[1])
+    assert np.isnan(std[1])
+
+
+def test_uncertainty_before_fit_raises():
+    pred = PropertyPredictor()
+    with pytest.raises(RuntimeError, match="fit"):
+        pred.predict_with_uncertainty(["CCO"])

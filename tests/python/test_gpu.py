@@ -11,6 +11,7 @@ from molcore.gpu import (
     tanimoto_gpu,
     autocast_context,
     nvmolkit_available,
+    nvmolkit_fingerprints,
 )
 
 
@@ -95,3 +96,21 @@ def test_autocast_context_cpu():
 def test_nvmolkit_available_returns_bool():
     result = nvmolkit_available()
     assert isinstance(result, bool)
+
+
+def test_nvmolkit_fingerprints_shape():
+    # nvmolkit not installed → falls back to Rust pipeline
+    smiles = ["CCO", "c1ccccc1", "CC(=O)O"]
+    fps = nvmolkit_fingerprints(smiles, nbits=2048)
+    assert isinstance(fps, torch.Tensor)
+    assert fps.shape == (3, 2048)
+
+
+def test_nvmolkit_fingerprints_dtype():
+    fps = nvmolkit_fingerprints(["CCO"], nbits=1024)
+    assert fps.dtype == torch.uint8
+
+
+def test_nvmolkit_fingerprints_custom_nbits():
+    fps = nvmolkit_fingerprints(["c1ccccc1"], nbits=1024)
+    assert fps.shape == (1, 1024)

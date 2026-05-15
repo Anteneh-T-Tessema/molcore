@@ -259,3 +259,30 @@ def test_cli_scaffold_split_defaults():
     assert args.train_frac == 0.8
     assert args.val_frac == 0.1
     assert args.seed == 42
+
+
+def test_cli_admet_screen_defaults():
+    from molcore.cli import build_parser
+    parser = build_parser()
+    args = parser.parse_args(["admet-screen", "mols.smi"])
+    assert args.command == "admet-screen"
+    assert args.input == "mols.smi"
+    assert args.output is None
+
+
+def test_cli_admet_screen_end_to_end(tmp_path):
+    """Run admet-screen against a real SMILES file and verify TSV output."""
+    import subprocess, sys
+    smi_file = tmp_path / "mols.smi"
+    smi_file.write_text("CC(=O)Oc1ccccc1C(=O)O\nCCO\n")
+    out_file = tmp_path / "out.tsv"
+    result = subprocess.run(
+        [sys.executable, "-m", "molcore.cli", "admet-screen",
+         str(smi_file), "-o", str(out_file)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert out_file.exists()
+    content = out_file.read_text()
+    assert "smiles" in content
+    assert "lipinski_pass" in content

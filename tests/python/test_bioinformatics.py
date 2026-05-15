@@ -89,6 +89,24 @@ def test_admet_druglike_flags():
     assert p.druglike
 
 
+def test_admet_profile_to_dict():
+    from molcore.admet import admet_screen
+    p = admet_screen([ASPIRIN])[0]
+    d = p.to_dict()
+    assert isinstance(d, dict)
+    assert "smiles" in d
+    assert "mw" in d
+    assert "lipinski_pass" in d
+    assert "druglike" in d
+
+
+def test_admet_profile_to_dict_invalid():
+    from molcore.admet import admet_screen
+    p = admet_screen([INVALID_SMILES])[0]
+    d = p.to_dict()
+    assert d["parse_error"] is True
+
+
 # ---------------------------------------------------------------------------
 # ProteinSeq — construction
 # ---------------------------------------------------------------------------

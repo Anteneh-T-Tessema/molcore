@@ -61,3 +61,40 @@ def test_no_fps_raises():
     ds = MolDataset.from_smiles(SMILES, compute_fps=False)
     with pytest.raises(ValueError, match="No fingerprints"):
         ds.fingerprints_tensor()
+
+
+def test_labels_tensor_returns_tensor():
+    ds = MolDataset.from_smiles(SMILES)
+    ds.labels = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    t = ds.labels_tensor()
+    assert t.shape == (4,)
+    assert t.dtype == torch.float32
+
+
+def test_labels_tensor_no_labels_raises():
+    ds = MolDataset.from_smiles(SMILES, compute_fps=False, compute_desc=False)
+    with pytest.raises(ValueError, match="No labels"):
+        ds.labels_tensor()
+
+
+def test_to_arrow_table_has_smiles_column():
+    import pyarrow as pa
+    ds = MolDataset.from_smiles(SMILES)
+    table = ds.to_arrow_table()
+    assert isinstance(table, pa.Table)
+    assert "smiles" in table.schema.names
+    assert table.num_rows == 4
+
+
+def test_to_arrow_table_has_fingerprints():
+    ds = MolDataset.from_smiles(SMILES)
+    table = ds.to_arrow_table()
+    assert "fingerprints" in table.schema.names
+
+
+def test_to_arrow_table_no_fps_still_works():
+    import pyarrow as pa
+    ds = MolDataset.from_smiles(SMILES, compute_fps=False, compute_desc=False)
+    table = ds.to_arrow_table()
+    assert isinstance(table, pa.Table)
+    assert table.num_rows == 4

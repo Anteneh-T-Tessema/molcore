@@ -15,8 +15,12 @@ from molcore.databases import (
     _parse_zinc_record,
     chembl_search,
     chembl_by_id,
+    chembl_activity,
+    chembl_smiles,
     zinc_by_id,
     zinc_smiles,
+    zinc_subsets,
+    zinc_random_sample,
     tdc_dataset,
     bindingdb_search,
 )
@@ -252,3 +256,91 @@ def test_bindingdb_record_fields(monkeypatch):
     assert r.smiles == "CCO"
     assert r.affinity == pytest.approx(8.5)
     assert r.affinity_type == "Kd"
+
+
+# ── chembl_activity mocked ───────────────────────────────────────────────────
+
+def test_chembl_activity_returns_list(monkeypatch):
+    monkeypatch.setattr(
+        "molcore.databases._get_json",
+        lambda *a, **kw: {"activities": [
+            {"molecule_chembl_id": "CHEMBL25", "canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O",
+             "standard_value": "150.0", "standard_units": "nM", "assay_chembl_id": "CHEMBL123"},
+        ]},
+    )
+    results = chembl_activity("CHEMBL240")
+    assert isinstance(results, list)
+    assert len(results) == 1
+    assert results[0]["molecule_chembl_id"] == "CHEMBL25"
+
+
+def test_chembl_activity_empty_on_no_data(monkeypatch):
+    monkeypatch.setattr("molcore.databases._get_json", lambda *a, **kw: {})
+    results = chembl_activity("CHEMBL_NONE")
+    assert results == []
+
+
+# ── chembl_smiles mocked ─────────────────────────────────────────────────────
+
+def test_chembl_smiles_batch_returns_dict(monkeypatch):
+    monkeypatch.setattr(
+        "molcore.databases._get_json",
+        lambda *a, **kw: {"molecules": [
+            {"molecule_chembl_id": "CHEMBL25",
+             "molecule_structures": {"canonical_smiles": "CC(=O)Oc1ccccc1C(=O)O"}},
+            {"molecule_chembl_id": "CHEMBL192",
+             "molecule_structures": {"canonical_smiles": "CCO"}},
+        ]},
+    )
+    monkeypatch.setattr("molcore.databases.time.sleep", lambda _: None)
+    result = chembl_smiles(["CHEMBL25", "CHEMBL192"])
+    assert result == {"CHEMBL25": "CC(=O)Oc1ccccc1C(=O)O", "CHEMBL192": "CCO"}
+
+
+def test_chembl_smiles_skips_no_structure(monkeypatch):
+    monkeypatch.setattr(
+        "molcore.databases._get_json",
+        lambda *a, **kw: {"molecules": [
+            {"molecule_chembl_id": "CHEMBL999", "molecule_structures": None},
+        ]},
+    )
+    monkeypatch.setattr("molcore.databases.time.sleep", lambda _: None)
+    result = chembl_smiles(["CHEMBL999"])
+    assert result == {}
+
+
+# ── zinc_subsets ─────────────────────────────────────────────────────────────
+
+def test_zinc_subsets_returns_list(monkeypatch):
+    monkeypatch.setattr(
+        "molcore.databases._get_json",
+        lambda *a, **kw: [{"name": "Drug-Like"}, {"name": "Lead-Like"}],
+    )
+    subsets = zinc_subsets()
+    assert isinstance(subsets, list)
+    assert "Drug-Like" in subsets
+
+
+def test_zinc_subsets_fallback_on_error(monkeypatch):
+    monkeypatch.setattr("molcore.databases._get_json", lambda *a, **kw: (_ for _ in ()).throw(Exception("net err")))
+    subsets = zinc_subsets()
+    assert isinstance(subsets, list)
+    assert len(subsets) > 0
+
+
+# ── zinc_random_sample ────────────────────────────────────────────────────────
+
+def test_zinc_random_sample_returns_list(monkeypatch):
+    monkeypatch.setattr(
+        "molcore.databases._get_json",
+        lambda *a, **kw: [{"smiles": "CCO"}, {"smiles": "c1ccccc1"}],
+    )
+    result = zinc_random_sample(n=2)
+    assert isinstance(result, list)
+    assert result == ["CCO", "c1ccccc1"]
+
+
+def test_zinc_random_sample_empty_on_error(monkeypatch):
+    monkeypatch.setattr("molcore.databases._get_json", lambda *a, **kw: (_ for _ in ()).throw(Exception("net err")))
+    result = zinc_random_sample(n=10)
+    assert result == []
