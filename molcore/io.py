@@ -64,15 +64,14 @@ class MolDataset:
 
         All SD properties are stored in `metadata`. Invalid records are silently skipped.
         """
-        from molcore.rdkit_bridge import from_sdf_file, canonicalize
-        from rdkit import Chem as _Chem
+        from molcore.rdkit_bridge import from_sdf_file, mol_to_smiles, canonicalize
         records = from_sdf_file(str(path), sanitize=sanitize, remove_hs=remove_hs)
         if not records:
             return cls(smiles=[], metadata={})
         smiles_list, all_props = [], []
         for rdmol, props in records:
             try:
-                smi = canonicalize(_Chem.MolToSmiles(rdmol))
+                smi = canonicalize(mol_to_smiles(rdmol))
                 smiles_list.append(smi)
                 all_props.append(props)
             except Exception:
@@ -184,13 +183,23 @@ class MolDataset:
             ]).astype(np.float32)
 
         labels = None
-        if "label" in table.schema.names:
+        schema_names = table.schema.names
+        _reserved = {"smiles", "fingerprints", "fp_nbits", "mw", "logp", "heavy_atoms", "label"}
+        if "label" in schema_names:
             labels = np.array(table.column("label").to_pylist(), dtype=np.float32)
+        else:
+            # multi-label: label_0, label_1, ...
+            label_cols = sorted(
+                [n for n in schema_names if n.startswith("label_") and n[6:].isdigit()],
+                key=lambda n: int(n[6:]),
+            )
+            if label_cols:
+                labels = np.column_stack(
+                    [table.column(c).to_pylist() for c in label_cols]
+                ).astype(np.float32)
+                _reserved = _reserved | set(label_cols)
 
-        meta_cols = {
-            n for n in table.schema.names
-            if n not in {"smiles", "fingerprints", "fp_nbits", "mw", "logp", "heavy_atoms", "label"}
-        }
+        meta_cols = {n for n in schema_names if n not in _reserved}
         metadata = {n: table.column(n).to_pylist() for n in meta_cols}
 
         return cls(smiles=smiles, fingerprints=fps, descriptors=desc, labels=labels, metadata=metadata)
@@ -254,16 +263,28 @@ class MolDataset:
         Preserves fingerprints, descriptors, labels, and metadata in each split.
         """
         from molcore.rdkit_bridge import scaffold_split as _split
+        from collections import defaultdict
         train_smi, val_smi, test_smi = _split(
             self.smiles, train_frac=train_frac, val_frac=val_frac, seed=seed
         )
-        smi_to_idx = {smi: i for i, smi in enumerate(self.smiles)}
+        # Build a list of positions per SMILES to handle duplicate SMILES correctly.
+        # A plain dict overwrites earlier indices; a deque lets us pop in order.
+        from collections import deque as _deque
+        smi_to_positions: dict[str, _deque] = defaultdict(_deque)
+        for i, smi in enumerate(self.smiles):
+            smi_to_positions[smi].append(i)
 
         def _ds(smi_list: list[str]) -> "MolDataset":
-            idx = [smi_to_idx[s] for s in smi_list if s in smi_to_idx]
+            idx = []
+            for s in smi_list:
+                if smi_to_positions[s]:
+                    idx.append(smi_to_positions[s].popleft())
             return self._subset(idx)
 
-        return _ds(train_smi), _ds(val_smi), _ds(test_smi)
+        train_ds = _ds(train_smi)
+        val_ds   = _ds(val_smi)
+        test_ds  = _ds(test_smi)
+        return train_ds, val_ds, test_ds
 
     # -------------------------------------------------------------------------
     # PyG / DGL export

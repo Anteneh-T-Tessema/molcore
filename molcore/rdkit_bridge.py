@@ -18,18 +18,23 @@ def from_smiles(smiles: str):
 
 def neutralize(smiles: str) -> str:
     mol = from_smiles(smiles)
-    uncharger = MolStandardize.rdMolStandardize.Uncharger()
+    _, uncharger, _ = _std_objects()
     return Chem.MolToSmiles(uncharger.uncharge(mol))
 
 
 def strip_salts(smiles: str) -> str:
     mol = from_smiles(smiles)
-    chooser = MolStandardize.rdMolStandardize.LargestFragmentChooser()
+    chooser, _, _ = _std_objects()
     return Chem.MolToSmiles(chooser.choose(mol))
 
 
 def canonicalize(smiles: str) -> str:
     return Chem.MolToSmiles(from_smiles(smiles))
+
+
+def mol_to_smiles(rdmol) -> str:
+    """Convert an RDKit Mol object to canonical SMILES. Used by io.py to keep rdkit imports isolated."""
+    return Chem.MolToSmiles(rdmol)
 
 
 def ecfp4_rdkit(smiles: list[str], radius: int = 2, nbits: int = 2048) -> torch.Tensor:
@@ -357,6 +362,13 @@ def write_sdf(
     parallel to smiles_list. Invalid SMILES are written as empty records so
     row indices are preserved.
     """
+    if properties:
+        for key, vals in properties.items():
+            if len(vals) != len(smiles_list):
+                raise ValueError(
+                    f"properties[{key!r}] has {len(vals)} values but smiles_list has "
+                    f"{len(smiles_list)} — lengths must match"
+                )
     writer = Chem.SDWriter(str(path))
     for i, smi in enumerate(smiles_list):
         try:

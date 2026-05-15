@@ -21,6 +21,13 @@ pub fn tanimoto_matrix<'py>(
     let (nq, nbits) = (q.nrows(), q.ncols());
     let nl = l.nrows();
 
+    if nbits != l.ncols() {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "query has {} bits but library has {} bits — nbits must match",
+            nbits, l.ncols()
+        )));
+    }
+
     // Pack both matrices into bit-compact u64 representation once (per matrix, not per pair)
     let q_packed: Vec<Vec<u64>> = (0..nq).map(|qi| pack(q.row(qi))).collect();
     let l_packed: Vec<Vec<u64>> = (0..nl).map(|li| pack(l.row(li))).collect();
