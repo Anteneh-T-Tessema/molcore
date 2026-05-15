@@ -84,6 +84,17 @@ All numbers on Apple M-series (arm64), CPU-only, Python 3.12.
 | Scaffold split | 33 ms | 35 ms | ~parity |
 | PyG conversion (200 mols) | 3.3 ms | 14.4 ms | **4.3×** |
 
+### GNN property prediction — ESOL solubility (scaffold split)
+
+ESOL dataset (Delaney 2004, 1128 molecules). Scaffold split is substantially harder
+than the random split used in published MoleculeNet baselines — results are not
+directly comparable to the published RMSE ≈ 0.58.
+
+| Configuration | RMSE | R² |
+|---|---|---|
+| GCN, hidden=64, 3 layers, 300 epochs | 1.038 | 0.727 |
+| Optuna-tuned (30 trials): hidden=128, 4 layers | 1.090 | 0.709 |
+
 ---
 
 ## What it does
@@ -222,7 +233,7 @@ Requires Rust 1.70+: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs 
 
 ## Architecture
 
-```
+```text
 SMILES strings
   │
   ▼  Rust ingest (RDKit-backed aromaticity perception)

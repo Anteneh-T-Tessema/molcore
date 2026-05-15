@@ -6,10 +6,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — v0.2.0
+## [0.2.0] — 2026-05-15
 
 ### Added
 
+- **GAT and GIN architectures** (`PropertyPredictor(model_type="gat"|"gin"|"gcn")`):
+  drop-in alternatives to GCN backed by a unified `_MolGNN` module. `model_type` is
+  stored in saved checkpoints; pre-v0.2 checkpoints without the key default to `"gcn"`
+  for full backward-compatibility.
+- **MaxMin diversity picking** (`diversity_pick`, `MolDataset.diversity_pick`):
+  O(n × N) iterative selection in Tanimoto fingerprint space — each step picks the
+  molecule with maximum minimum distance to all already-selected molecules. Returns the
+  N most structurally diverse indices. Scales to ~500k; see docstring for guidance
+  beyond that.
+- **MMPA — single-cut fragmentation** (`mmpa`): fragments acyclic bonds to produce
+  matched molecular pairs; each result dict contains `core`, `smiles_a/b`, `mol_a/b`,
+  and a `transform` SMARTS. Double-cut (`max_cut_bonds=2`) is planned for v0.3.
 - **Butina clustering** (`butina_cluster`, `MolDataset.cluster`): Tanimoto-distance
   clustering via RDKit's Butina algorithm. `cluster(cutoff=0.4)` adds a `cluster_id`
   metadata column; cluster 0 is always the largest cluster. Invalid SMILES get ID -1.
@@ -17,9 +29,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `kfold(k=5)` produces random splits; `scaffold_kfold(k=5)` assigns whole Murcko
   scaffold groups to folds so no scaffold leaks between train and val.
 - **Optuna hyperparameter search** (`PropertyPredictor.tune`): searches hidden dim,
-  n_layers, dropout, lr, batch_size over n_trials Optuna trials; restores the
-  best-seen model weights. Requires `pip install molcore[optuna]`.
+  n_layers, dropout, lr, batch_size, and model_type over n_trials Optuna trials;
+  restores the best-seen model weights. Requires `pip install molcore[optuna]`.
 - `optuna` optional dependency group in `pyproject.toml`; added to `[all]`.
+
+### Benchmarks
+
+- ESOL scaffold-split (Delaney 2004, 1128 molecules, 80/10/10 scaffold split):
+  - Untuned GCN (hidden=64, 3 layers, 300 epochs): RMSE = 1.038, R² = 0.727
+  - Optuna-tuned (30 trials × 100 epochs, best: hidden=128, 4 layers, dropout=0.21,
+    lr=0.00222, batch=16, 300-epoch final run): RMSE = 1.090, R² = 0.709
+  - Note: scaffold split is substantially harder than the random split used in published
+    MoleculeNet baselines (RMSE ≈ 0.58); these results are not directly comparable.
+
+### Testing
+
+- 457 tests passing (17 Rust + 440 Python/evals)
+- New test modules: `test_diversity_and_gnn.py` (19 tests), `test_clustering_and_cv.py`
+  (21 tests), `test_mmpa.py` (12 tests), `test_reliability.py` (13 tests)
+- Frozen fixture `tests/python/fixtures/gcn_pre_v02.pt` permanently guards pre-v0.2
+  checkpoint backward-compatibility
 
 ### Fixed (reliability)
 
