@@ -8,13 +8,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-- Add `PyMolGraph.from_smiles` as the primary Rust graph constructor and keep
-  `from_smiles_rdkit` as a backward-compatible historical alias.
-- Update `Mol.from_smiles` to call the neutral constructor name.
+---
+
+## [0.5.0] — 2026-05-15
+
 - Add `DTIDataset` and `DTIPredictor` — drug-target interaction predictor with
   GCN/GAT/GIN ligand encoder, 1D-CNN protein encoder, scaffold-aware dataset
   split, and save/load checkpoint API. Exposed at the top-level `molcore`
   namespace. 26 new tests, all passing.
+- Fix `PyMolGraph.from_smiles_rdkit` naming lie: primary method is now
+  `from_smiles`; `from_smiles_rdkit` is kept as a documented backward-compatible
+  alias. The Rust ingestion path has always used molcore's built-in parser.
 - Add `py.typed` PEP 561 marker so pyright and mypy treat `molcore` as a fully
   typed package.
 

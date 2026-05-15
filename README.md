@@ -201,6 +201,34 @@ pred.save("logp_model.pt")
 pred2 = PropertyPredictor.load("logp_model.pt")
 ```
 
+### Drug-target interaction prediction
+
+```python
+from molcore import DTIDataset, DTIPredictor
+
+ds = DTIDataset(
+    smiles    = ["CC(=O)O",    "c1ccccc1"],
+    sequences = ["MKTLLILAVL", "ACDEFGHIKL"],
+    labels    = [6.5,           7.2],          # pIC50
+)
+
+# Scaffold-aware split — no ligand scaffold leaks between train/test
+train, val, test = ds.scaffold_split(train_frac=0.8, val_frac=0.1)
+
+# GCN ligand encoder + 1D-CNN protein encoder, no extra dependencies
+pred = DTIPredictor(hidden=64, n_layers=3, epochs=100, model_type="gcn")
+pred.fit(train, val_dataset=val)
+
+affinities = pred.predict(["CCO"], ["MKTLLILAVL"])   # (N,) float32 pIC50
+metrics    = pred.score(test)                         # {r2, mae, rmse, n}
+
+pred.save("dti_model.pt")
+pred2 = DTIPredictor.load("dti_model.pt")
+```
+
+`model_type` can be `"gcn"`, `"gat"`, or `"gin"`. ESM-2 protein embeddings are
+available when `pip install molcore-chem[bio]` is installed.
+
 ---
 
 ## Installation
@@ -256,6 +284,7 @@ Python layer (molcore/)
   rdkit_bridge.py  — ALL RDKit calls isolated here (one file to update)
   io.py            — MolDataset: SDF + Parquet + DataFrame bridge
   predictor.py     — PropertyPredictor: 3-layer GCN + MC Dropout
+  dti.py           — DTIPredictor: GCN/GAT/GIN ligand + 1D-CNN protein encoder
   pandas_tools.py  — DataFrame-first API for existing RDKit workflows
   agentic_rag.py   — ChemRAG: iterative chemical literature retrieval
 ```
