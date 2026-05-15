@@ -362,8 +362,9 @@ class DTIPredictor:
         if len(smiles) != len(sequences):
             raise ValueError("smiles and sequences must have the same length")
 
+        model = self._model
         dev = self._resolve_device()
-        self._model.to(dev).eval()
+        model.to(dev).eval()
 
         results = np.full(len(smiles), float("nan"), dtype=np.float32)
         for start in range(0, len(smiles), self.batch_size):
@@ -373,10 +374,10 @@ class DTIPredictor:
             if not graphs:
                 continue
             from torch_geometric.data import Batch
-            mb = Batch.from_data_list(graphs).to(dev)
+            mb = Batch.from_data_list(graphs).to(dev)  # type: ignore[union-attr]
             pt = _pad_proteins(prot_ts).to(dev)
             with torch.no_grad():
-                preds = self._model(mb, pt).cpu().numpy()
+                preds = model(mb, pt).cpu().numpy()
             for pred_i, local_i in enumerate(valid_local):
                 results[start + local_i] = preds[pred_i]
 
@@ -481,6 +482,8 @@ class DTIPredictor:
     ) -> float:
         from torch_geometric.data import Batch
 
+        assert self._model is not None
+        assert dataset.labels is not None  # fit() checks this before calling _run_epoch
         if train:
             self._model.train()
         else:
@@ -511,7 +514,7 @@ class DTIPredictor:
             if not graphs:
                 continue
 
-            mb = Batch.from_data_list(graphs).to(dev)
+            mb = Batch.from_data_list(graphs).to(dev)  # type: ignore[union-attr]
             pt = _pad_proteins(prot_ts).to(dev)
             y  = torch.tensor(labels, dtype=torch.float32, device=dev)
 

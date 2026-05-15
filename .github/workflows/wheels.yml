@@ -123,8 +123,7 @@ jobs:
       - name: Install wheel + deps
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy rdkit torch-geometric pyarrow pandas
-          pip install --no-index --find-links /tmp/dist molcore-chem
+          pip install --find-links /tmp/dist molcore-chem
 
       - name: Smoke test
         run: |
@@ -133,11 +132,14 @@ jobs:
           from molcore.molecule import Mol
           from molcore.pipeline import featurize_smiles
           from molcore.io import MolDataset
+          from molcore import DTIDataset, DTIPredictor
           mol = Mol.from_smiles('CCO')
           fps = featurize_smiles(['CCO', 'c1ccccc1'], backend='rust')
           assert fps.shape == (2, 2048), f'bad shape: {fps.shape}'
           svg = mol.to_svg()
           assert '<svg' in svg.lower(), 'SVG render failed'
+          ds = DTIDataset(smiles=['CCO'], sequences=['MKTLLIL'])
+          assert len(ds) == 1
           print('smoke test passed')
           "
 

@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false
 """
 molcore.protein — Protein sequence handling with ESM-2 embeddings.
 

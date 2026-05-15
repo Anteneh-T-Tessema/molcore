@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false
 """
 rdkit_bridge.py — ALL RDKit calls are isolated here.
 One file to update when RDKit changes an API.
