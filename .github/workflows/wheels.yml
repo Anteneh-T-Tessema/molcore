@@ -155,7 +155,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     environment:
       name: pypi
-      url: https://pypi.org/p/molcore
+      url: https://pypi.org/p/molcore-chem
 
     steps:
       - uses: actions/download-artifact@v4
@@ -172,4 +172,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         # Uses trusted publishing (OIDC) — no API token needed.
-        # Configure at: https://pypi.org/manage/project/molcore/settings/publishing/
+        # Configure at: https://pypi.org/manage/project/molcore-chem/settings/publishing/

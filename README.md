@@ -3,7 +3,7 @@
 **AI-native cheminformatics toolkit** — Rust performance, RDKit compatibility, native PyG integration.
 
 [![CI](https://github.com/Anteneh-T-Tessema/molcore/actions/workflows/ci.yml/badge.svg)](https://github.com/Anteneh-T-Tessema/molcore/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/molcore)](https://pypi.org/p/molcore)
+[![PyPI](https://img.shields.io/pypi/v/molcore-chem)](https://pypi.org/p/molcore-chem)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

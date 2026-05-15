@@ -27,7 +27,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `admet_screen_df(smiles)` — same, returns a pandas DataFrame.
   - `ADMETPredictor.from_tdc(endpoint)` — random-forest predictor trained
     on any TDC ADMET benchmark (BBB, hERG, AMES, CYP, Caco2, solubility,
-    …). Requires `pip install molcore[bio]`.
+    …). Requires `pip install molcore-chem[bio]`.
   - Supports save/load for trained predictors.
 
 - **Protein module** (`molcore.protein`):
@@ -43,7 +43,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     tensor.
   - `ProteinSeq.to_pyg()` — residue-level PyG graph with 20-dim one-hot
     node features and bidirectional sequential edges.
-  - Requires `pip install molcore[bio]` for embedding.
+  - Requires `pip install molcore-chem[bio]` for embedding.
 
 - **BindingDB & TDC data loaders**:
   - `MolDataset.from_tdc(dataset, split)` — load any TDC ADMET or DTI
@@ -55,10 +55,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `databases.tdc_dataset(name)` — low-level TDC split loader.
   - `databases.bindingdb_search(affinity, target)` — returns
     `BindingRecord` objects with SMILES, protein sequence, and affinity.
-  - Requires `pip install molcore[bio]` (PyTDC).
+  - Requires `pip install molcore-chem[bio]` (PyTDC).
 
 - **New optional dependency group** `bio`:
-  `pip install molcore[bio]` installs `transformers`, `sentencepiece`,
+  `pip install molcore-chem[bio]` installs `transformers`, `sentencepiece`,
   `PyTDC`, `scikit-learn`, and `pandas`.
 
 ### Security (also in v0.2.x patch)
@@ -98,7 +98,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scaffold groups to folds so no scaffold leaks between train and val.
 - **Optuna hyperparameter search** (`PropertyPredictor.tune`): searches hidden dim,
   n_layers, dropout, lr, batch_size, and model_type over n_trials Optuna trials;
-  restores the best-seen model weights. Requires `pip install molcore[optuna]`.
+  restores the best-seen model weights. Requires `pip install molcore-chem[optuna]`.
 - `optuna` optional dependency group in `pyproject.toml`; added to `[all]`.
 
 ### Benchmarks

@@ -22,7 +22,7 @@ I wanted to share **molcore v0.4**, an open-source cheminformatics / ML toolkit 
 
 **What's new across v0.3 and v0.4:**
 
-- **ADMET profiling** (`molcore.admet`): rule-based screening — Lipinski Ro5, Veber, Egan, PAINS, Brenk — with no extra dependencies. ML predictors trained on TDC benchmarks (BBB, hERG, AMES, CYP, Caco2, solubility) via `pip install molcore[bio]`.
+- **ADMET profiling** (`molcore.admet`): rule-based screening — Lipinski Ro5, Veber, Egan, PAINS, Brenk — with no extra dependencies. ML predictors trained on TDC benchmarks (BBB, hERG, AMES, CYP, Caco2, solubility) via `pip install molcore-chem[bio]`.
 - **Protein sequences** (`molcore.protein`): `ProteinSeq` with FASTA parsing (no BioPython), ESM-2 embeddings via HuggingFace Transformers, and residue-level PyG graphs.
 - **BindingDB & TDC data loaders**: `MolDataset.from_tdc(dataset)` and `MolDataset.from_bindingdb(affinity, target)` load any TDC ADMET or DTI dataset directly.
 - **MMPA double-cut** (`mmpa(smiles, max_cut_bonds=2)`): finds matched molecular pairs differing by a linker between two constant terminal groups — enables bioisostere linker replacement and scaffold-hopping SAR.
@@ -41,10 +41,10 @@ I wanted to share **molcore v0.4**, an open-source cheminformatics / ML toolkit 
 **Install:**
 
 ```bash
-pip install molcore           # core (Rust + RDKit, no extras needed)
-pip install molcore[bio]      # + ADMET ML, ESM-2, TDC/BindingDB loaders
-pip install molcore[optuna]   # + Optuna HP search
-pip install molcore[all]      # everything
+pip install molcore-chem      # core (Rust + RDKit, no extras needed)
+pip install molcore-chem[bio]      # + ADMET ML, ESM-2, TDC/BindingDB loaders
+pip install molcore-chem[optuna]   # + Optuna HP search
+pip install molcore-chem[all]      # everything
 ```
 
 **Quickstart (Colab):**
@@ -86,7 +86,7 @@ profiles = admet_screen(["CC(=O)Oc1ccccc1C(=O)O", "CCC1NC(=O)..."])
 print(profiles[0].lipinski_pass, profiles[0].druglike, profiles[0].pains_alerts)
 ```
 
-**ESM-2 protein embeddings (`pip install molcore[bio]`):**
+**ESM-2 protein embeddings (`pip install molcore-chem[bio]`):**
 ```python
 from molcore.protein import ProteinSeq
 p = ProteinSeq.from_sequence("MKTLLILAVLCLGFAQAS")
@@ -102,8 +102,8 @@ pairs = mmpa(["c1ccccc1CCc1ccccc1", "c1ccccc1CCCc1ccccc1"], max_cut_bonds=2)
 ```
 
 ```bash
-pip install molcore
-pip install molcore[bio]   # + ADMET ML, ESM-2, TDC/BindingDB
+pip install molcore-chem
+pip install molcore-chem[bio]   # + ADMET ML, ESM-2, TDC/BindingDB
 ```
 
 407 tests, zero failures. Source: https://github.com/Anteneh-T-Tessema/molcore
@@ -152,8 +152,8 @@ ig     = integrated_gradients(model, pyg_data, steps=50)
 ```
 
 ```bash
-pip install molcore
-pip install molcore[bio]   # + protein embeddings, TDC loaders
+pip install molcore-chem
+pip install molcore-chem[bio]   # + protein embeddings, TDC loaders
 ```
 
 Source: https://github.com/Anteneh-T-Tessema/molcore
