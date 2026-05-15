@@ -6,7 +6,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — v0.4.0
+## [0.4.0] — 2026-05-15
 
 - **MMPA double-cut** (`mmpa(smiles, max_cut_bonds=2)`):
   Finds Matched Molecular Pairs that differ by a linker fragment between two
