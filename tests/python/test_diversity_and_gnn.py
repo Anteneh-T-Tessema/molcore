@@ -159,14 +159,13 @@ def test_invalid_model_type_raises():
 
 
 def test_load_old_checkpoint_defaults_to_gcn(tmp_path):
-    """Checkpoints without model_type (pre-v0.2) load as GCN — backward compat."""
+    """Dynamically-built old-style checkpoint: no model_type → defaults to gcn."""
     import torch
-    from molcore.predictor import PropertyPredictor, _MolGNN
+    from molcore.predictor import PropertyPredictor
     ds = _make_ds()
     pred = PropertyPredictor(hidden=32, n_layers=2, epochs=5, model_type="gcn")
     pred.fit(ds, verbose=False)
 
-    # Manually save without model_type in hparams to simulate old checkpoint
     p = tmp_path / "old_checkpoint.pt"
     torch.save({
         "state_dict": pred._model.state_dict(),
@@ -178,3 +177,28 @@ def test_load_old_checkpoint_defaults_to_gcn(tmp_path):
     assert loaded.model_type == "gcn"
     preds = loaded.predict(TRAIN_SMILES[:2])
     assert not np.any(np.isnan(preds))
+
+
+def test_load_frozen_pre_v02_fixture():
+    """Frozen fixture from before model_type existed — catches silent future regressions.
+
+    This file was saved with hparams = {hidden, n_layers, dropout, n_outputs} only.
+    If backward-compat ever breaks, this test will catch it before a user's saved
+    model becomes unloadable after a pip upgrade.
+    """
+    import pathlib
+    from molcore.predictor import PropertyPredictor
+
+    fixture = pathlib.Path(__file__).parent / "fixtures" / "gcn_pre_v02.pt"
+    assert fixture.exists(), f"Fixture missing: {fixture}"
+
+    loaded = PropertyPredictor.load(str(fixture))
+    assert loaded.model_type == "gcn", (
+        f"Pre-v0.2 checkpoint should load as GCN, got: {loaded.model_type!r}"
+    )
+    assert loaded.hidden == 32
+    assert loaded.n_layers == 2
+
+    preds = loaded.predict(TRAIN_SMILES[:3])
+    assert preds.shape == (3,)
+    assert not np.any(np.isnan(preds)), "Pre-v0.2 checkpoint produced NaN predictions"

@@ -601,7 +601,12 @@ def diversity_pick(
     Invalid SMILES are excluded from selection (their indices are never returned).
 
     Time complexity: O(n × N) fingerprint comparisons, where N = len(smiles_list).
-    For N ≤ 100k and n ≤ 1k, this runs in seconds.
+    For N ≤ 100k and n ≤ 1k, this runs in seconds on a single core.
+
+    Scaling note: at N > 500k the O(n × N) cost becomes the bottleneck. For very
+    large libraries, pre-cluster with butina_cluster() at a loose cutoff (~0.8),
+    then run diversity_pick() within each cluster — this reduces the effective N
+    to cluster size. A built-in fast=True mode for this pattern is planned for v0.3.
     """
     from rdkit.Chem import DataStructs
 

@@ -362,16 +362,17 @@ def main():
 
         search_pred = PropertyPredictor(epochs=args.tune_epochs)
         search_pred.tune(t_ds, v_ds, n_trials=args.n_trials, verbose=False)
-        print(f"  Best HP: hidden={search_pred.hidden}  n_layers={search_pred.n_layers}"
-              f"  dropout={search_pred.dropout:.3f}  lr={search_pred.lr:.5f}"
-              f"  batch={search_pred.batch_size}")
+        print(f"  Best HP: arch={search_pred.model_type}  hidden={search_pred.hidden}"
+              f"  n_layers={search_pred.n_layers}  dropout={search_pred.dropout:.3f}"
+              f"  lr={search_pred.lr:.5f}  batch={search_pred.batch_size}")
 
         # Final training run with best HP at full epoch budget
         print(f"\n  Final training with best HP — {args.epochs} epochs")
         hl_pred = PropertyPredictor(
             hidden=search_pred.hidden, n_layers=search_pred.n_layers,
             dropout=search_pred.dropout, lr=search_pred.lr,
-            batch_size=search_pred.batch_size, epochs=args.epochs,
+            batch_size=search_pred.batch_size, model_type=search_pred.model_type,
+            epochs=args.epochs,
         )
         hl_pred.fit(t_ds, val_dataset=v_ds, verbose=False)
     else:
@@ -382,8 +383,13 @@ def main():
         hl_pred.fit(t_ds, val_dataset=v_ds if len(v_ds) > 0 else None, verbose=False)
 
     hl_m = hl_pred.score(te_ds)
-    tag  = "Tuned" if args.tune else "Default"
-    print(f"\n  [{tag}] RMSE={hl_m['rmse']:.4f}  MAE={hl_m['mae']:.4f}"
+    if args.tune:
+        tag = (f"Tuned — {hl_pred.model_type.upper()}, hidden={hl_pred.hidden},"
+               f" {hl_pred.n_layers} layers, {args.n_trials} trials")
+    else:
+        tag = f"Default — {hl_pred.model_type.upper()}, hidden={hl_pred.hidden}, 3 layers"
+    print(f"\n  [{tag}]")
+    print(f"  RMSE={hl_m['rmse']:.4f}  MAE={hl_m['mae']:.4f}"
           f"  R²={hl_m['r2']:.4f}  n={hl_m['n']}")
 
     # Parquet round-trip demo
