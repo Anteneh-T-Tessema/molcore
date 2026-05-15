@@ -11,7 +11,7 @@ permissions:
   id-token: write          # needed for trusted publishing to PyPI
 
 jobs:
-  # ── Build wheels (matrix: 4 OS × {x86_64, aarch64 where applicable}) ──────
+  # ── Build wheels ─────────────────────────────────────────────────────────
   build-wheels:
     name: Wheel · ${{ matrix.os }} · ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -28,21 +28,6 @@ jobs:
           - os: ubuntu-22.04
             target: aarch64
             manylinux: auto
-
-          # ── macOS arm64 (Apple Silicon) ───────────────────────────────────
-          - os: macos-14
-            target: aarch64
-            manylinux: ""
-
-          # ── macOS x86_64 (Intel) ──────────────────────────────────────────
-          - os: macos-13
-            target: x86_64
-            manylinux: ""
-
-          # ── Windows x64 ───────────────────────────────────────────────────
-          - os: windows-latest
-            target: x86_64
-            manylinux: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -103,10 +88,6 @@ jobs:
         include:
           - os: ubuntu-22.04
             python-version: "3.12"
-          - os: macos-14
-            python-version: "3.12"
-          - os: windows-latest
-            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +107,7 @@ jobs:
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install numpy rdkit torch-geometric pyarrow pandas pytest
-          pip install --no-index --find-links dist molcore
+          pip install --no-index --find-links dist molcore-chem
 
       - name: Smoke test
         run: |
