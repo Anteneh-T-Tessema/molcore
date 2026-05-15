@@ -1,185 +1,160 @@
-# Launch announcements — v0.2.0
+# Launch announcements — v0.4.0
 
-Ready-to-post text for each channel.
+Ready-to-post text for each channel. Copy-paste as-is.
 
 ---
 
 ## RDKit mailing list (rdkit-discuss@lists.sourceforge.net)
 
-**Subject:** molcore v0.2: Rust-accelerated cheminformatics — clustering, MMPA, diversity picking, GAT/GIN, Optuna tuning
+**Subject:** molcore v0.4: ADMET profiling, ESM-2 protein embeddings, MMPA double-cut, 407 tests
 
 Hi all,
 
-I wanted to share **molcore v0.2**, an open-source cheminformatics toolkit that wraps RDKit where it matters and accelerates the hot paths in Rust.
+I wanted to share **molcore v0.4**, an open-source cheminformatics / ML toolkit that wraps RDKit where it matters and accelerates hot paths in Rust.
 
-The core idea: molecules as batch-first, zero-copy tensors that flow directly into PyTorch Geometric — no Python loops, no intermediate copies.
+**Performance** (Apple M-series, CPU, 10 k molecules):
 
-**Performance** (Apple M-series, CPU, 10k molecules):
+| Metric | molcore | RDKit | Speedup |
+|---|---|---|---|
+| ECFP4 fingerprints | 2.0 M mol/s | 15 k mol/s | **132×** |
+| Tanimoto 500×10 k | 224 M pairs/s | 7.7 M pairs/s | **29×** |
+| PyG `Data` export (200 mols) | 3.3 ms | 14.4 ms | **4.3×** |
 
-- ECFP4 fingerprints via Rust Rayon: **132× faster** than RDKit
-- Tanimoto matrix: **29× faster** via u64 `count_ones()`
-- PyG `Data` export: **4.3× faster** than manual Python feature extraction
+**What's new across v0.3 and v0.4:**
 
-**What's new in v0.2:**
+- **ADMET profiling** (`molcore.admet`): rule-based screening — Lipinski Ro5, Veber, Egan, PAINS, Brenk — with no extra dependencies. ML predictors trained on TDC benchmarks (BBB, hERG, AMES, CYP, Caco2, solubility) via `pip install molcore[bio]`.
+- **Protein sequences** (`molcore.protein`): `ProteinSeq` with FASTA parsing (no BioPython), ESM-2 embeddings via HuggingFace Transformers, and residue-level PyG graphs.
+- **BindingDB & TDC data loaders**: `MolDataset.from_tdc(dataset)` and `MolDataset.from_bindingdb(affinity, target)` load any TDC ADMET or DTI dataset directly.
+- **MMPA double-cut** (`mmpa(smiles, max_cut_bonds=2)`): finds matched molecular pairs differing by a linker between two constant terminal groups — enables bioisostere linker replacement and scaffold-hopping SAR.
+- **CLI `admet-screen`**: `molcore admet-screen mols.smi` runs ADMET profiling from the terminal and writes a TSV.
+- **Input validation**: 10 000-char SMILES cap, 1 MB Mol block cap, null-byte path guard — wired into all public entry points.
+- **Security pipeline**: cargo-audit, pip-audit, bandit, gitleaks, Dependabot, and SECURITY.md.
 
-- **Butina clustering** (`butina_cluster`, `MolDataset.cluster`): Tanimoto-distance clustering, adds `cluster_id` metadata column
-- **k-fold and scaffold k-fold CV** (`MolDataset.kfold`, `MolDataset.scaffold_kfold`): no scaffold leaks between folds
-- **MMPA — single-cut fragmentation** (`mmpa`): matched molecular pairs with `core`, `smiles_a/b`, and `transform` SMARTS
-- **MaxMin diversity picking** (`diversity_pick`): O(n × N) iterative Tanimoto-space selection, scales to ~500k
-- **GAT and GIN architectures** (`PropertyPredictor(model_type="gat"|"gin"|"gcn")`): unified `_MolGNN` module, backward-compatible checkpoints
-- **Optuna HP search** (`PropertyPredictor.tune`): searches hidden dim, layers, dropout, lr, batch size, and architecture; requires `pip install molcore[optuna]`
+**Earlier highlights (v0.1–v0.2):**
 
-**ESOL benchmark** (Delaney 2004, 1128 molecules, scaffold split):
+- Butina clustering, scaffold k-fold CV, diversity picking (MaxMin), GAT/GIN/GCN architectures, Optuna HP search
+- Single-cut MMPA, MCS, R-group decomposition, reaction enumeration
+- Depiction (`to_svg`, `to_png`, `draw_grid`), gradient-based atom attribution (`atom_attribution`, `integrated_gradients`)
 
-| Configuration | RMSE | R² |
-| --- | --- | --- |
-| GCN, hidden=64, 3 layers, 300 epochs | 1.038 | 0.727 |
-| Optuna-tuned (30 trials): hidden=128, 4 layers | 1.090 | 0.709 |
-
-Note: scaffold split is substantially harder than the random split used in published MoleculeNet baselines (RMSE ≈ 0.58) — results are not directly comparable.
+**407 tests** (17 Rust + 390 Python), zero failures.
 
 **Install:**
 
 ```bash
-pip install molcore          # core
-pip install molcore[optuna]  # + Optuna tuning
-pip install molcore[all]     # everything
+pip install molcore           # core (Rust + RDKit, no extras needed)
+pip install molcore[bio]      # + ADMET ML, ESM-2, TDC/BindingDB loaders
+pip install molcore[optuna]   # + Optuna HP search
+pip install molcore[all]      # everything
 ```
 
-**Quickstart notebook (Colab):**
-[colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
+**Quickstart (Colab):**
+https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb
 
-**Migration guide** (RDKit → molcore):
-[github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md](https://github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md)
+**Migration guide (RDKit → molcore):**
+https://github.com/Anteneh-T-Tessema/molcore/blob/main/docs/migrating_from_rdkit.md
 
-The design keeps RDKit as the chemistry authority — all RDKit calls are isolated in a single `rdkit_bridge.py`. The Rust core handles batch hot paths; RDKit handles everything requiring its full chemical intelligence.
+**Source:** https://github.com/Anteneh-T-Tessema/molcore
 
-457 tests passing (17 Rust + 440 Python). Happy to answer questions.
+The design keeps RDKit as the chemistry authority — all RDKit calls are isolated in `rdkit_bridge.py`. The Rust core (PyO3 + Rayon) handles batch hot paths.
 
-Source: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
+Happy to answer questions.
 
 ---
 
 ## Reddit r/cheminformatics
 
-**Title:** molcore v0.2: RDKit-compatible cheminformatics — clustering, MMPA, diversity picking, GAT/GIN, Optuna (132× faster fingerprints)
+**Title:** molcore v0.4: ADMET screening, ESM-2 protein embeddings, MMPA double-cut — 132× faster fingerprints, 407 tests
 
 ---
 
-v0.2 of molcore is out. If you work at the intersection of cheminformatics and ML, this eliminates the usual glue code: RDKit fingerprint loop → numpy stack → torch.from_numpy → PyG DataLoader.
+v0.4 of **molcore** is out. It eliminates the usual Python glue between RDKit, numpy, and PyTorch Geometric.
 
-**Performance** (Apple M-series, CPU, 10k molecules):
+**Performance** (Apple M, CPU, 10 k molecules):
 
 | | molcore | RDKit | Speedup |
-| --- | --- | --- | --- |
-| ECFP4 fingerprints | 2.0M mol/s | 15k mol/s | **132×** |
-| Tanimoto 500×10k | 224M pairs/s | 7.7M pairs/s | **29×** |
-| PyG conversion (200 mols) | 3.3 ms | 14.4 ms | **4.3×** |
+|---|---|---|---|
+| ECFP4 | 2.0 M mol/s | 15 k mol/s | **132×** |
+| Tanimoto 500×10 k | 224 M pairs/s | 7.7 M pairs/s | **29×** |
+| PyG export (200 mols) | 3.3 ms | 14.4 ms | **4.3×** |
 
-**New in v0.2:**
+**New in v0.3–v0.4:**
 
-- **Butina clustering** — Tanimoto-distance, adds `cluster_id` metadata column
-- **k-fold / scaffold k-fold CV** — no scaffold leaks between folds
-- **MMPA** — single-cut matched molecular pairs with transform SMARTS
-- **MaxMin diversity picking** — scales to ~500k molecules
-- **GAT and GIN architectures** — drop-in alongside GCN, backward-compatible checkpoints
-- **Optuna HP search** — auto-tunes architecture + training HPs over n_trials trials
-
-**ESOL benchmark** (scaffold split, 1128 molecules):
-
-| | RMSE | R² |
-| --- | --- | --- |
-| GCN untuned | 1.038 | 0.727 |
-| Optuna-tuned (30 trials) | 1.090 | 0.709 |
-
-Scaffold split is substantially harder than the random split used in published MoleculeNet baselines (RMSE ≈ 0.58) — not directly comparable.
-
-**Install:**
-
-```bash
-pip install molcore           # no conda needed, RDKit installs automatically
-pip install molcore[optuna]   # + Optuna tuning
+**ADMET profiling (no extra deps):**
+```python
+from molcore.admet import admet_screen
+profiles = admet_screen(["CC(=O)Oc1ccccc1C(=O)O", "CCC1NC(=O)..."])
+print(profiles[0].lipinski_pass, profiles[0].druglike, profiles[0].pains_alerts)
 ```
 
-**Quickstart in Colab:**
-[colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
+**ESM-2 protein embeddings (`pip install molcore[bio]`):**
+```python
+from molcore.protein import ProteinSeq
+p = ProteinSeq.from_sequence("MKTLLILAVLCLGFAQAS")
+emb = p.embed()          # (320,) mean-pooled ESM-2 t6
+graph = p.to_pyg()       # residue-level PyG graph
+```
 
-GitHub: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
+**MMPA double-cut (linker replacement):**
+```python
+from molcore.rdkit_bridge import mmpa
+pairs = mmpa(["c1ccccc1CCc1ccccc1", "c1ccccc1CCCc1ccccc1"], max_cut_bonds=2)
+# finds pairs differing by linker: -CH2CH2- vs -CH2CH2CH2-
+```
+
+```bash
+pip install molcore
+pip install molcore[bio]   # + ADMET ML, ESM-2, TDC/BindingDB
+```
+
+407 tests, zero failures. Source: https://github.com/Anteneh-T-Tessema/molcore
 
 ---
 
 ## PyG GitHub Discussions / torch-geometric community
 
-**Title:** molcore v0.2 — zero-copy RDKit → PyG pipeline, GAT/GIN/GCN predictor, Optuna tuning, Butina clustering
+**Title:** molcore v0.4 — zero-copy RDKit→PyG pipeline with ADMET, ESM-2 protein embeddings, MMPA double-cut
 
 ---
 
-v0.2 of molcore is out. If you're building GNNs on molecular graphs, it eliminates the Python-loop graph construction boilerplate with a Rust/PyO3 zero-copy bridge:
+Hi PyG community,
 
-```python
-from molcore.molecule import Mol
-from molcore.io import MolDataset, MolTorchDataset
-from torch_geometric.loader import DataLoader
+Sharing **molcore v0.4**, a cheminformatics toolkit built around PyG as the primary ML target.
 
-mol = Mol.from_smiles("CC(=O)Oc1ccccc1C(=O)O")
-data = mol.to_pyg()
-# data.x          → (N, 9) float32  — 9 node features incl. hybridization, chirality
-# data.edge_index → (2, E) int64 COO bidirectional
-# data.edge_attr  → (E, 4) float32 bond one-hot
-
-ds = MolDataset.from_sdf("library.sdf")
-ds.labels = logp_array
-loader = DataLoader(MolTorchDataset(ds), batch_size=32, shuffle=True)
-```
-
-Graph construction is **4.3× faster** than a manual Python atom loop at 200 mol/batch.
-
-**New in v0.2 — GNN side:**
-
-```python
-from molcore.predictor import PropertyPredictor
-
-# GAT or GIN, drop-in alongside GCN
-pred = PropertyPredictor(model_type="gat", hidden=128, epochs=300)
-pred.fit(train_ds, val_dataset=val_ds)
-
-# Optuna HP search — finds arch + training HPs automatically
-best = PropertyPredictor.tune(train_ds, val_ds, n_trials=30)
-
-# Uncertainty quantification
-means, stds = best.predict_with_uncertainty(smiles, n_samples=30)
-```
-
-**New in v0.2 — cheminformatics side:**
+**The core abstraction:**
 
 ```python
 from molcore.io import MolDataset
-from molcore.analysis import mmpa, diversity_pick
+from molcore.predictor import PropertyPredictor
 
-# Scaffold k-fold CV (no leakage)
-for train, val in ds.scaffold_kfold(k=5):
-    ...
+ds = MolDataset.from_smiles(smiles, labels=labels)
+pyg_list = ds.to_pyg_list()            # list[torch_geometric.data.Data]
 
-# Butina clustering
-ds_clustered = ds.cluster(cutoff=0.4)  # adds cluster_id metadata
-
-# MaxMin diversity picking (scales to ~500k)
-indices = diversity_pick(ds, n=500)
-
-# Matched molecular pairs
-pairs = mmpa(ds)  # [{"core": ..., "smiles_a": ..., "transform": ...}, ...]
+pred = PropertyPredictor(model_type="gin", hidden=128, n_layers=4)
+pred.fit(ds, verbose=True)
+mean, std = pred.predict_with_uncertainty(test_smiles)
 ```
 
-**ESOL benchmark** (scaffold split, 1128 molecules):
+Zero Python loops — the Rust core hands `int64`/`float32` arrays directly to PyG via `IntoPyArray`.
 
-| | RMSE | R² |
-| --- | --- | --- |
-| GCN, hidden=64, 3 layers | 1.038 | 0.727 |
-| Optuna-tuned GAT/GIN/GCN (30 trials) | 1.090 | 0.709 |
+**New in v0.4:**
 
-**Install:** `pip install molcore` or `pip install molcore[optuna]`
+- `ProteinSeq.to_pyg()` — residue-level graph with 20-dim one-hot node features, ready for protein GNNs
+- `MolDataset.from_tdc(dataset)` and `from_bindingdb(affinity, target)` — load TDC ADMET / BindingDB DTI datasets into `MolDataset`
+- MMPA double-cut for linker-based SAR
 
-**Colab quickstart:**
-[colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb](https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb)
+**Architectures:** GCN, GAT, GIN (via `model_type` flag, backward-compatible checkpoints)
 
-GitHub: [github.com/Anteneh-T-Tessema/molcore](https://github.com/Anteneh-T-Tessema/molcore)
+**Explainability:**
+```python
+from molcore.explainability import atom_attribution, integrated_gradients
+scores = atom_attribution(model, pyg_data)   # (N,) per-atom importance
+ig     = integrated_gradients(model, pyg_data, steps=50)
+```
+
+```bash
+pip install molcore
+pip install molcore[bio]   # + protein embeddings, TDC loaders
+```
+
+Source: https://github.com/Anteneh-T-Tessema/molcore
+Quickstart: https://colab.research.google.com/github/Anteneh-T-Tessema/molcore/blob/main/examples/quickstart.ipynb
