@@ -237,12 +237,18 @@ def evaluate(model, loader):
 
 def main():
     parser = argparse.ArgumentParser(description="ESOL GCN benchmark using molcore pipeline")
-    parser.add_argument("--epochs",   type=int,   default=150)
-    parser.add_argument("--hidden",   type=int,   default=64)
-    parser.add_argument("--batch",    type=int,   default=32)
-    parser.add_argument("--dropout",  type=float, default=0.1)
-    parser.add_argument("--lr",       type=float, default=0.005)
-    parser.add_argument("--seed",     type=int,   default=42)
+    parser.add_argument("--epochs",    type=int,   default=150)
+    parser.add_argument("--hidden",    type=int,   default=64)
+    parser.add_argument("--batch",     type=int,   default=32)
+    parser.add_argument("--dropout",   type=float, default=0.1)
+    parser.add_argument("--lr",        type=float, default=0.005)
+    parser.add_argument("--seed",      type=int,   default=42)
+    parser.add_argument("--tune",      action="store_true",
+                        help="Run Optuna HP search before final training (requires optuna)")
+    parser.add_argument("--n-trials",  type=int,   default=30,
+                        help="Number of Optuna trials (used with --tune)")
+    parser.add_argument("--tune-epochs", type=int, default=100,
+                        help="Epochs per Optuna trial (shorter than final training)")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -330,9 +336,9 @@ def main():
             verdict = f"NOTE — {delta:.2f} above baseline (scaffold split + more epochs recommended)"
         print(f"\n  {verdict}")
 
-    # PropertyPredictor high-level API comparison
+    # PropertyPredictor high-level API (+ optional Optuna tuning)
     print(f"\n{'=' * 60}")
-    print("PropertyPredictor API (high-level, same dataset)")
+    print("PropertyPredictor API (scaffold split, high-level)")
     print("=" * 60)
     smiles_list = [r[0] for r in records]
     labels_arr  = np.array([r[1] for r in records], dtype=np.float32)
@@ -340,14 +346,45 @@ def main():
     ds = MolDataset.from_smiles(smiles_list, compute_fps=False, compute_desc=False)
     ds.labels = labels_arr
     t_ds, v_ds, te_ds = ds.scaffold_split(train_frac=0.8, val_frac=0.1)
+    print(f"  Scaffold split — Train: {len(t_ds)}  Val: {len(v_ds)}  Test: {len(te_ds)}")
 
-    hl_pred = PropertyPredictor(
-        hidden=args.hidden, n_layers=3, dropout=args.dropout,
-        epochs=min(args.epochs, 100), lr=args.lr, batch_size=args.batch,
-    )
-    hl_pred.fit(t_ds, val_dataset=v_ds if len(v_ds) > 0 else None, verbose=False)
+    if args.tune:
+        try:
+            import optuna
+        except ImportError:
+            print("  optuna not installed — skipping HP search. pip install optuna")
+            args.tune = False
+
+    if args.tune:
+        print(f"\n  Optuna HP search — {args.n_trials} trials × {args.tune_epochs} epochs each")
+        import optuna as _optuna
+        _optuna.logging.set_verbosity(_optuna.logging.WARNING)
+
+        search_pred = PropertyPredictor(epochs=args.tune_epochs)
+        search_pred.tune(t_ds, v_ds, n_trials=args.n_trials, verbose=False)
+        print(f"  Best HP: hidden={search_pred.hidden}  n_layers={search_pred.n_layers}"
+              f"  dropout={search_pred.dropout:.3f}  lr={search_pred.lr:.5f}"
+              f"  batch={search_pred.batch_size}")
+
+        # Final training run with best HP at full epoch budget
+        print(f"\n  Final training with best HP — {args.epochs} epochs")
+        hl_pred = PropertyPredictor(
+            hidden=search_pred.hidden, n_layers=search_pred.n_layers,
+            dropout=search_pred.dropout, lr=search_pred.lr,
+            batch_size=search_pred.batch_size, epochs=args.epochs,
+        )
+        hl_pred.fit(t_ds, val_dataset=v_ds, verbose=False)
+    else:
+        hl_pred = PropertyPredictor(
+            hidden=args.hidden, n_layers=3, dropout=args.dropout,
+            epochs=args.epochs, lr=args.lr, batch_size=args.batch,
+        )
+        hl_pred.fit(t_ds, val_dataset=v_ds if len(v_ds) > 0 else None, verbose=False)
+
     hl_m = hl_pred.score(te_ds)
-    print(f"  RMSE={hl_m['rmse']:.4f}  MAE={hl_m['mae']:.4f}  R²={hl_m['r2']:.4f}  n={hl_m['n']}")
+    tag  = "Tuned" if args.tune else "Default"
+    print(f"\n  [{tag}] RMSE={hl_m['rmse']:.4f}  MAE={hl_m['mae']:.4f}"
+          f"  R²={hl_m['r2']:.4f}  n={hl_m['n']}")
 
     # Parquet round-trip demo
     print(f"\nParquet round-trip demo:")

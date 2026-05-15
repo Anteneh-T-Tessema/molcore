@@ -12,6 +12,8 @@ from molcore.rdkit_bridge import (
     murcko_scaffold,
     scaffold_split,
     butina_cluster,
+    # MMPA
+    mmpa,
     # reactions
     react,
     react_bimolecular,
@@ -55,6 +57,8 @@ __all__ = [
     "murcko_scaffold",
     "scaffold_split",
     "butina_cluster",
+    # MMPA
+    "mmpa",
     # reactions
     "react",
     "react_bimolecular",

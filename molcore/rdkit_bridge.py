@@ -626,6 +626,131 @@ def butina_cluster(
     return cluster_ids
 
 
+# ---------------------------------------------------------------------------
+# Matched Molecular Pair Analysis (MMPA)
+# ---------------------------------------------------------------------------
+
+def mmpa(
+    smiles_list: list[str],
+    max_cut_bonds: int = 1,
+    radius: int = 3,
+) -> "list[dict]":
+    """
+    Find all Matched Molecular Pairs (MMPs) in a list of molecules.
+
+    A Matched Molecular Pair is a pair of molecules that differ by a single
+    structural transformation at one attachment point (single-cut MMPA).
+
+    Algorithm:
+      1. Fragment each molecule at every single non-ring bond (RECAP-style single cut).
+      2. For each fragmentation (core, substituent), collect all molecules sharing
+         the same core — these form a pair group.
+      3. Within each pair group, emit (mol_A, mol_B, substituent_A, substituent_B)
+         for every pair.
+
+    Args:
+        smiles_list   : list of input SMILES (duplicates and invalids are skipped)
+        max_cut_bonds : maximum number of bonds to cut (currently only 1 is supported)
+        radius        : number of heavy atoms around the attachment point to include
+                        in the environment (context) SMARTS; 0 = no context
+
+    Returns list of dicts with keys:
+        mol_a       : SMILES of molecule A
+        mol_b       : SMILES of molecule B
+        smiles_a    : substituent on A (the part that changes)
+        smiles_b    : substituent on B (the part that changes)
+        core        : common core SMILES (the part that stays the same)
+        transform   : canonical transform string '[*:1]>>smiles_b'
+
+    Pairs are returned in canonical order (mol_a < mol_b alphabetically).
+    Invalid SMILES are silently skipped.
+    """
+    from rdkit.Chem import AllChem, BRICS
+    from collections import defaultdict
+
+    if max_cut_bonds != 1:
+        raise ValueError("max_cut_bonds > 1 is not yet supported")
+
+    # Fragment at single acyclic bonds only (one-cut BRICS-style)
+    ACYCLIC_SINGLE = Chem.MolFromSmarts("[!$([#7;X3;r])&!$([#8;X2;r])&!$([#16;X2;r])]-&!@[*]")
+
+    # core_to_mols: core_smiles → {orig_smiles → substituent_smiles}
+    core_to_entries: dict[str, dict[str, str]] = defaultdict(dict)
+
+    valid_smiles = []
+    for smi in smiles_list:
+        try:
+            canon = Chem.MolToSmiles(from_smiles(smi))
+            valid_smiles.append(canon)
+        except ValueError:
+            pass
+
+    for smi in valid_smiles:
+        try:
+            mol = from_smiles(smi)
+        except ValueError:
+            continue
+
+        matches = mol.GetSubstructMatches(ACYCLIC_SINGLE)
+        seen_cores: set[str] = set()
+
+        for bond_match in matches:
+            bi, bj = bond_match
+            bond = mol.GetBondBetweenAtoms(bi, bj)
+            if bond is None or bond.IsInRing():
+                continue
+
+            # Fragment: mark bond then split
+            em = Chem.RWMol(mol)
+            em.RemoveBond(bi, bj)
+            em.GetAtomWithIdx(bi).SetAtomMapNum(1)
+            em.GetAtomWithIdx(bj).SetAtomMapNum(1)
+
+            try:
+                frags = Chem.MolToSmiles(em.GetMol()).split(".")
+            except Exception:
+                continue
+
+            if len(frags) != 2:
+                continue
+
+            # Assign core (larger fragment) and substituent (smaller)
+            frags.sort(key=lambda s: s.count("*") + len(s), reverse=True)
+            core_smi, sub_smi = frags[0], frags[1]
+
+            # Canonicalize with attachment point as dummy atom
+            try:
+                core_can = Chem.MolToSmiles(Chem.MolFromSmiles(core_smi))
+                sub_can  = Chem.MolToSmiles(Chem.MolFromSmiles(sub_smi))
+            except Exception:
+                continue
+
+            if core_can in seen_cores:
+                continue
+            seen_cores.add(core_can)
+            core_to_entries[core_can][smi] = sub_can
+
+    pairs = []
+    for core_smi, mol_to_sub in core_to_entries.items():
+        entries = sorted(mol_to_sub.items())  # deterministic order
+        for i in range(len(entries)):
+            for j in range(i + 1, len(entries)):
+                mol_a, sub_a = entries[i]
+                mol_b, sub_b = entries[j]
+                if sub_a == sub_b:
+                    continue  # identical substituent — not a pair
+                pairs.append({
+                    "mol_a":     mol_a,
+                    "mol_b":     mol_b,
+                    "smiles_a":  sub_a,
+                    "smiles_b":  sub_b,
+                    "core":      core_smi,
+                    "transform": f"{sub_a}>>{sub_b}",
+                })
+
+    return pairs
+
+
 def find_mcs(
     smiles_list: list[str],
     timeout: int = 5,

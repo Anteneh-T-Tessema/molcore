@@ -51,7 +51,7 @@ echo "==> Installing I/O + DataFrame extras"
 pip install pyarrow pandas
 
 echo "==> Installing dev tools"
-pip install pytest pytest-benchmark nbformat
+pip install pytest pytest-benchmark nbformat optuna
 
 echo "==> Installing optional pretrained wrappers (skippable)"
 pip install molfeat datamol || echo "  (molfeat/datamol skipped — optional)"
