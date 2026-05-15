@@ -110,6 +110,27 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# admet-screen
+# ---------------------------------------------------------------------------
+
+def cmd_admet_screen(args: argparse.Namespace) -> None:
+    """Run rule-based ADMET profiling on a SMILES file, write TSV."""
+    from molcore.admet import admet_screen_df
+
+    with open(args.input) as fh:
+        smiles = [line.strip() for line in fh if line.strip()]
+
+    print(f"Screening {len(smiles)} molecules…")
+    df = admet_screen_df(smiles)
+
+    out = args.output or args.input.rsplit(".", 1)[0] + "_admet.tsv"
+    df.to_csv(out, sep="\t", index=False)
+
+    passing = int(df["druglike"].sum()) if "druglike" in df.columns else "?"
+    print(f"Drug-like: {passing}/{len(df)}  →  {out}")
+
+
+# ---------------------------------------------------------------------------
 # scaffold-split (bonus subcommand)
 # ---------------------------------------------------------------------------
 
@@ -172,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-n", type=int, default=1000, help="Number of molecules (default 1000)")
     p.add_argument("--repeats", type=int, default=3)
     p.set_defaults(func=cmd_benchmark)
+
+    # admet-screen
+    p = sub.add_parser("admet-screen", help="Rule-based ADMET profiling of a SMILES file")
+    p.add_argument("input", help="Input SMILES file (one SMILES per line)")
+    p.add_argument("-o", "--output", default=None, help="Output TSV path (default: <input>_admet.tsv)")
+    p.set_defaults(func=cmd_admet_screen)
 
     # scaffold-split
     p = sub.add_parser("scaffold-split", help="Scaffold-aware train/val/test split")

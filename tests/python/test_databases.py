@@ -10,12 +10,15 @@ import pytest
 from molcore.databases import (
     ChEMBLCompound,
     ZINCCompound,
+    BindingRecord,
     _parse_chembl_record,
     _parse_zinc_record,
     chembl_search,
     chembl_by_id,
     zinc_by_id,
     zinc_smiles,
+    tdc_dataset,
+    bindingdb_search,
 )
 
 
@@ -142,3 +145,110 @@ def test_zinc_smiles_batch(monkeypatch):
     monkeypatch.setattr("molcore.databases.time.sleep", lambda _: None)
     result = zinc_smiles(["ZINC1", "ZINC2"])
     assert result == {"ZINC1": "CCO", "ZINC2": "c1ccccc1"}
+
+
+# ── tdc_dataset mocked ───────────────────────────────────────────────────────
+
+def _make_tdc_split():
+    import pandas as pd
+    df = pd.DataFrame({"Drug": ["CCO", "c1ccccc1"], "Y": [1.0, 0.0]})
+    return {"train": df, "valid": df.head(1), "test": df.head(1)}
+
+
+def test_tdc_dataset_returns_splits(monkeypatch):
+    splits = _make_tdc_split()
+    mock_data = MagicMock()
+    mock_data.get_split.return_value = splits
+    mock_admet = MagicMock(return_value=mock_data)
+
+    import types
+    fake_tdc = types.ModuleType("tdc")
+    fake_single = types.ModuleType("tdc.single_pred")
+    fake_single.ADMET = mock_admet
+    fake_tdc.single_pred = fake_single
+
+    monkeypatch.setitem(__import__("sys").modules, "tdc", fake_tdc)
+    monkeypatch.setitem(__import__("sys").modules, "tdc.single_pred", fake_single)
+
+    result = tdc_dataset("BBB_Martini")
+    assert set(result.keys()) == {"train", "valid", "test"}
+    assert len(result["train"]) == 2
+
+
+def test_tdc_dataset_missing_dep_raises(monkeypatch):
+    monkeypatch.setitem(__import__("sys").modules, "tdc", None)
+    with pytest.raises(ImportError, match="PyTDC"):
+        tdc_dataset("BBB_Martini")
+
+
+def test_tdc_dataset_unknown_name_raises(monkeypatch):
+    import types, sys
+    fake_tdc = types.ModuleType("tdc")
+    fake_single = types.ModuleType("tdc.single_pred")
+
+    def _raise(*a, **kw):
+        raise ValueError("unknown dataset")
+
+    fake_single.ADMET = _raise
+    fake_tdc.single_pred = fake_single
+    fake_multi = types.ModuleType("tdc.multi_pred")
+
+    def _raise2(*a, **kw):
+        raise ValueError("unknown dataset")
+
+    fake_multi.DTI = _raise2
+    fake_tdc.multi_pred = fake_multi
+
+    monkeypatch.setitem(sys.modules, "tdc", fake_tdc)
+    monkeypatch.setitem(sys.modules, "tdc.single_pred", fake_single)
+    monkeypatch.setitem(sys.modules, "tdc.multi_pred", fake_multi)
+
+    with pytest.raises(ValueError, match="Could not load TDC dataset"):
+        tdc_dataset("NONEXISTENT_DATASET_XYZ")
+
+
+# ── bindingdb_search mocked ──────────────────────────────────────────────────
+
+def _make_bindingdb_split():
+    import pandas as pd
+    # No Target_ID column so the filter uses the Target column (protein names)
+    df = pd.DataFrame({
+        "Drug":   ["CCO", "c1ccccc1", "CC(=O)O"],
+        "Target": ["EGFR_HUMAN", "EGFR_HUMAN", "CDK2_HUMAN"],
+        "Y":      [8.5,          7.2,          6.1],
+    })
+    return {"train": df, "valid": df.head(1), "test": df.head(1)}
+
+
+def test_bindingdb_search_returns_records(monkeypatch):
+    monkeypatch.setattr("molcore.databases.tdc_dataset", lambda *a, **kw: _make_bindingdb_split())
+    records = bindingdb_search(affinity="Kd")
+    assert len(records) == 3
+    assert all(isinstance(r, BindingRecord) for r in records)
+
+
+def test_bindingdb_search_target_filter(monkeypatch):
+    monkeypatch.setattr("molcore.databases.tdc_dataset", lambda *a, **kw: _make_bindingdb_split())
+    records = bindingdb_search(affinity="Kd", target="EGFR")
+    assert len(records) == 2
+    assert all("EGFR" in r.target_sequence for r in records)
+
+
+def test_bindingdb_search_max_records(monkeypatch):
+    monkeypatch.setattr("molcore.databases.tdc_dataset", lambda *a, **kw: _make_bindingdb_split())
+    records = bindingdb_search(affinity="Kd", max_records=1)
+    assert len(records) == 1
+
+
+def test_bindingdb_search_affinity_type_stored(monkeypatch):
+    monkeypatch.setattr("molcore.databases.tdc_dataset", lambda *a, **kw: _make_bindingdb_split())
+    records = bindingdb_search(affinity="IC50")
+    assert all(r.affinity_type == "IC50" for r in records)
+
+
+def test_bindingdb_record_fields(monkeypatch):
+    monkeypatch.setattr("molcore.databases.tdc_dataset", lambda *a, **kw: _make_bindingdb_split())
+    r = bindingdb_search(affinity="Kd")[0]
+    assert r.smiles == "CCO"
+    assert r.affinity == pytest.approx(8.5)
+    assert r.affinity_type == "Kd"
